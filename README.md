@@ -10,10 +10,9 @@
 | 컴퓨터 | 파일 |
 |---|---|
 | Mac (Apple Silicon: M1 이후) | `Sunlight_<버전>_aarch64.dmg` |
-| Mac (Intel) | `Sunlight_<버전>_x64.dmg` |
 | Windows 10/11 | `Sunlight_<버전>_x64-setup.exe` |
 
-macOS 13.4 이상이 필요합니다. 내 Mac 종류는  메뉴 > **이 Mac에 관하여**의 “칩” 항목에서 확인합니다.
+macOS 13.4 이상, Apple Silicon Mac(M1 이후)이 필요합니다. 내 Mac 종류는  메뉴 > **이 Mac에 관하여**의 “칩” 항목에서 확인합니다. Intel Mac용은 제공하지 않습니다(내장한 ONNX Runtime 빌드가 Intel Mac을 지원하지 않음).
 
 ### 설치
 
@@ -134,7 +133,7 @@ npm test             # 프런트 parity 테스트 + Rust 단위 테스트 (첫 �
 npm run dist         # src-tauri/target/release/bundle/ 아래 .app, .dmg (Windows에서는 .msi, .exe)
 ```
 
-- Windows 설치 파일은 Windows에서 빌드해야 합니다. `.github/workflows/release.yml`이 `v*` 태그를 푸시하면 Mac(Apple Silicon, Intel)과 Windows용을 함께 만들어 GitHub 릴리스에 올립니다.
+- Windows 설치 파일은 Windows에서 빌드해야 합니다. `.github/workflows/release.yml`이 `v*` 태그를 푸시하면 Mac(Apple Silicon)과 Windows용을 함께 만들어 GitHub 릴리스에 올립니다.
 - `main`에 푸시하면 `.github/workflows/ci.yml`이 빌드와 테스트를 돌립니다.
 - Mac 빌드는 ad-hoc 서명입니다. Developer ID 서명과 공증을 하려면 저장소 시크릿에 `APPLE_*` 값을 넣고 `release.yml`의 env에 연결합니다(빈 값을 넘기면 빌드가 실패합니다).
 - 최소 macOS는 13.4입니다(ONNX Runtime 요구 사항).
