@@ -1,0 +1,790 @@
+/* Sunlight — Apple design tokens (single Action Blue accent, no chrome shadows, one product shadow). */
+:root {
+  --primary: #0066cc;
+  --action: #0066cc; /* pill fill: Action Blue on light and dark surfaces */
+  --primary-focus: #0071e3;
+  --primary-on-dark: #2997ff;
+  --ink: #1d1d1f;
+  --body-muted: #cccccc;
+  --ink-80: #333333;
+  --ink-48: #7a7a7a;
+  --divider-soft: #f0f0f0;
+  --hairline: #e0e0e0;
+  --canvas: #ffffff;
+  --parchment: #f5f5f7;
+  --pearl: #fafafc;
+  --tile-1: #272729;
+  --tile-2: #2a2a2c;
+  --black: #000000;
+  --chip: rgba(210, 210, 215, 0.64);
+  --product-shadow: rgba(0, 0, 0, 0.22) 3px 5px 30px 0;
+  --display: 'SF Pro Display', system-ui, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Segoe UI', 'Malgun Gothic', sans-serif;
+  --text: 'SF Pro Text', system-ui, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Segoe UI', 'Malgun Gothic', sans-serif;
+  /* consumed by the ported viewer CSS */
+  --viewer-secondary-color: var(--parchment);
+  --ml-border-default: var(--hairline);
+  font-family: var(--text);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: var(--canvas);
+}
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+button {
+  cursor: pointer;
+  border: 0;
+  background: none;
+  padding: 0;
+}
+button:active:not(:disabled) {
+  transform: scale(0.95);
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* ---------- typography ---------- */
+.hero-display {
+  font: 600 56px/1.07 var(--display);
+  letter-spacing: -0.28px;
+}
+.display-lg {
+  font: 600 40px/1.1 var(--display);
+}
+.display-md {
+  font: 600 34px/1.47 var(--text);
+  letter-spacing: -0.374px;
+}
+.lead {
+  font: 400 28px/1.14 var(--display);
+  letter-spacing: 0.196px;
+}
+.tagline {
+  font: 600 21px/1.19 var(--display);
+  letter-spacing: 0.231px;
+}
+.body,
+.body-strong {
+  font: 400 17px/1.47 var(--text);
+  letter-spacing: -0.374px;
+}
+.body-strong {
+  font-weight: 600;
+  line-height: 1.24;
+}
+.caption,
+.caption-strong {
+  font: 400 14px/1.43 var(--text);
+  letter-spacing: -0.224px;
+}
+.caption-strong {
+  font-weight: 600;
+  line-height: 1.29;
+}
+.muted {
+  color: var(--ink-48);
+}
+.muted-dark {
+  color: var(--body-muted);
+}
+.error {
+  color: #d70015;
+}
+.center {
+  text-align: center;
+}
+.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---------- buttons ---------- */
+.pill {
+  border-radius: 9999px;
+  padding: 11px 22px;
+  font: 400 17px/1.47 var(--text);
+  letter-spacing: -0.374px;
+  white-space: nowrap;
+}
+.pill.small {
+  padding: 6px 15px;
+  font-size: 14px;
+  line-height: 1.29;
+  letter-spacing: -0.224px;
+}
+.pill.primary {
+  background: var(--action);
+  color: #fff;
+}
+.pill.secondary {
+  color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.tile-dark .pill.secondary {
+  color: var(--primary-on-dark);
+  box-shadow: inset 0 0 0 1px var(--primary-on-dark);
+}
+.text-link {
+  color: var(--primary);
+  font-size: inherit;
+}
+.text-link.utility {
+  font: 400 14px/1.29 var(--text);
+  letter-spacing: -0.224px;
+}
+.cta-row {
+  display: flex;
+  gap: 17px;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+/* ---------- navigation ---------- */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.global-nav {
+  flex: none;
+  height: 44px;
+  background: var(--black);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  padding: 0 24px;
+  font: 400 12px/1 var(--text);
+  letter-spacing: -0.12px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.global-nav button {
+  color: rgba(255, 255, 255, 0.8);
+}
+.global-nav button:hover,
+.global-nav .current {
+  color: #fff;
+}
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 14px/1 var(--display);
+  color: #fff !important;
+}
+.global-links {
+  display: flex;
+  gap: 24px;
+  margin-left: auto;
+}
+.sub-nav {
+  flex: none;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 24px;
+  background: rgba(245, 245, 247, 0.8);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+.sub-nav .tagline {
+  min-width: 0;
+  flex: 1;
+  -webkit-line-clamp: 1;
+}
+.sub-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
+/* ---------- tiles ---------- */
+.page {
+  flex: 1;
+  overflow: auto;
+}
+.page.dragging {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: -2px;
+}
+.tile {
+  padding: 80px 48px;
+}
+.tile-light {
+  background: var(--canvas);
+}
+.tile-parchment {
+  background: var(--parchment);
+}
+.tile-dark {
+  background: var(--tile-1);
+  color: #fff;
+}
+.hero {
+  text-align: center;
+  padding-top: 96px;
+}
+.hero .lead {
+  margin-top: 12px;
+}
+.tile-dark .display-lg {
+  margin: 8px 0;
+}
+.narrow {
+  max-width: 980px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.section-head {
+  max-width: 1440px;
+  margin: 0 auto 32px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  justify-content: space-between;
+}
+
+/* ---------- cards ---------- */
+.search-input {
+  height: 44px;
+  min-width: 0;
+  width: 320px;
+  border-radius: 9999px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: var(--canvas);
+  padding: 12px 20px;
+  font: 400 17px/1.47 var(--text);
+  letter-spacing: -0.374px;
+  outline: none;
+}
+.card-grid {
+  max-width: 1440px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 24px;
+}
+.utility-card {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: 18px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+article.utility-card {
+  cursor: pointer;
+}
+.utility-card .text-link {
+  align-self: flex-start;
+  margin-top: auto;
+}
+.thumb {
+  aspect-ratio: 3 / 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  overflow: visible;
+}
+.thumb img,
+.thumb-blank {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+  box-shadow: var(--product-shadow); /* the one product shadow: the paper resting on the card */
+}
+.thumb-blank {
+  width: 75%;
+  height: 100%;
+  background: var(--parchment);
+  box-shadow: none;
+}
+.file-list {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  max-width: 980px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.utility-card.row {
+  flex-direction: row;
+  align-items: center;
+  gap: 24px;
+  padding: 17px 24px;
+}
+.utility-card.row .text-link {
+  margin: 0;
+}
+.file-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.usage {
+  display: flex;
+  justify-content: center;
+  gap: 48px;
+  margin: 32px 0 24px;
+}
+.usage > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+/* ---------- settings ---------- */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.option-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 220px;
+  padding: 12px 20px;
+  border-radius: 9999px;
+  background: var(--canvas);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  font: 400 14px/1.43 var(--text);
+  letter-spacing: -0.224px;
+  text-align: left;
+}
+.option-chip strong {
+  font-weight: 600;
+}
+.option-chip span {
+  color: var(--ink-48);
+}
+.option-chip.selected {
+  box-shadow: inset 0 0 0 2px var(--primary-focus);
+}
+.chip-row.compact .option-chip {
+  min-width: 0;
+  padding: 8px 16px;
+}
+.form {
+  gap: 24px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.inline {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+}
+.inline .search-input {
+  flex: 1;
+}
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+progress {
+  width: 100%;
+  height: 4px;
+  appearance: none;
+  border: 0;
+  border-radius: 2px;
+  background: var(--divider-soft);
+}
+progress::-webkit-progress-bar {
+  background: var(--divider-soft);
+  border-radius: 2px;
+}
+progress::-webkit-progress-value {
+  background: var(--primary);
+  border-radius: 2px;
+}
+.test-row {
+  display: flex;
+  align-items: center;
+  gap: 17px;
+}
+
+/* ---------- reader ---------- */
+.reader {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.segmented {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--canvas);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+  font: 400 14px/1.29 var(--text);
+  letter-spacing: -0.224px;
+}
+.segmented button {
+  width: 32px;
+  height: 32px;
+  font-size: 17px;
+}
+.segmented select {
+  height: 32px;
+  border: 0;
+  background: transparent;
+  padding: 0 8px;
+  outline-offset: -2px;
+}
+.page-box {
+  padding: 0 10px;
+  gap: 4px;
+  color: var(--ink-48);
+}
+.page-box input {
+  width: 30px;
+  border: 0;
+  text-align: right;
+  color: var(--ink);
+  background: transparent;
+  outline: none;
+}
+.engine {
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#mainContainer {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--parchment);
+}
+#viewerContainer {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  outline: none;
+}
+.pdfViewer .page {
+  border: 0;
+  margin: 12px auto;
+}
+
+/* ---------- toast ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  gap: 17px;
+  align-items: center;
+  max-width: calc(100vw - 48px);
+  padding: 12px 24px;
+  border-radius: 9999px;
+  background: rgba(29, 29, 31, 0.92);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  color: #fff;
+  font: 400 14px/1.43 var(--text);
+  letter-spacing: -0.224px;
+}
+.toast .text-link {
+  color: var(--primary-on-dark);
+}
+
+@media (max-width: 833px) {
+  .tile {
+    padding: 48px 24px;
+  }
+  .hero-display {
+    font-size: 40px;
+  }
+  .engine,
+  .reader-nav .tagline {
+    display: none;
+  }
+  .section-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .search-input {
+    width: 100%;
+  }
+}
+
+/* ---------- settings modal ---------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: rgba(0, 0, 0, 0.4);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.modal {
+  display: flex;
+  width: min(960px, 100%);
+  height: min(720px, 100%);
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--canvas);
+  color: var(--ink);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+.modal.confirm {
+  flex-direction: column;
+  gap: 20px;
+  width: min(420px, 100%);
+  height: auto;
+  padding: 28px;
+}
+.modal.confirm .cta-row {
+  justify-content: flex-end;
+}
+.modal-tabs {
+  flex: none;
+  width: 200px;
+  padding: 32px 12px;
+  background: var(--parchment);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.modal-tabs .tagline {
+  padding: 0 12px 16px;
+}
+.modal-tabs button {
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font: 400 14px/1.29 var(--text);
+  letter-spacing: -0.224px;
+  color: var(--ink-80);
+}
+.modal-tabs button.current {
+  background: var(--canvas);
+  color: var(--ink);
+  font-weight: 600;
+}
+.modal-body {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+  padding: 32px 40px 48px;
+}
+.modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--chip);
+  color: var(--ink);
+  font-size: 13px;
+}
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+.settings-section h3 {
+  margin-top: 16px;
+}
+.settings-section h3:first-child {
+  margin-top: 0;
+}
+.select-pill {
+  height: 44px;
+  min-width: 320px;
+  border-radius: 9999px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: var(--canvas);
+  padding: 0 20px;
+  font: 400 17px/1.47 var(--text);
+}
+.key-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.key-row {
+  gap: 12px;
+}
+.key-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 17px;
+  align-items: center;
+}
+.text-button {
+  cursor: pointer;
+}
+.text-button:hover {
+  color: var(--primary);
+}
+
+/* ---------- translation progress ---------- */
+.progress-pill {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 120px;
+}
+.progress-pill progress {
+  height: 3px;
+}
+
+/* ---------- dark appearance (Apple dark surfaces; links switch to Sky Link Blue) ---------- */
+:root[data-appearance='dark'] {
+  color-scheme: dark;
+  --primary: #2997ff;
+  --primary-focus: #2997ff;
+  --ink: #f5f5f7;
+  --ink-80: #e0e0e2;
+  --ink-48: #a1a1a6;
+  --body-muted: #86868b;
+  --canvas: #000000;
+  --parchment: #161617;
+  --pearl: #1d1d1f;
+  --hairline: #38383a;
+  --divider-soft: #2c2c2e;
+  --chip: rgba(66, 66, 69, 0.72);
+}
+:root[data-appearance='dark'] .sub-nav {
+  background: rgba(22, 22, 23, 0.8);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+:root[data-appearance='dark'] .utility-card,
+:root[data-appearance='dark'] .option-chip,
+:root[data-appearance='dark'] .search-input,
+:root[data-appearance='dark'] .select-pill,
+:root[data-appearance='dark'] .segmented {
+  background: var(--pearl);
+}
+:root[data-appearance='dark'] .search-input,
+:root[data-appearance='dark'] .select-pill,
+:root[data-appearance='dark'] .modal {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+:root[data-appearance='dark'] .segmented {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+/* PDF pages: invert the rendered canvas (as Moonlight's dark theme does). Translation blocks sample
+   their cover colour from that canvas, so they take the same filter to stay matched. */
+:root[data-appearance='dark'] .pdfViewer .page {
+  background: #1a1a1a;
+}
+:root[data-appearance='dark'] .pdfViewer .page canvas,
+:root[data-appearance='dark'] .browser-layout-translation-block {
+  filter: invert(90%) hue-rotate(180deg);
+}
+:root[data-appearance='dark'] .layout-translated-pdf-controls {
+  background: rgba(22, 22, 23, 0.8);
+}
+:root[data-appearance='dark'] .layout-translated-pdf-mode-button.active {
+  background: var(--pearl);
+}
+:root[data-appearance='dark'] .browser-layout-source-match,
+:root[data-appearance='dark'] .browser-layout-translation-sentence.active {
+  background-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+/* ---------- comfort mode: warm paper, lower contrast ---------- */
+:root.comfort {
+  --parchment: #f3eee4;
+  --viewer-secondary-color: #ebe5d8;
+}
+:root.comfort .pdfViewer .page {
+  background: #f6efe0;
+}
+:root.comfort .pdfViewer .page canvas,
+:root.comfort .browser-layout-translation-block {
+  filter: sepia(0.35) saturate(0.85) brightness(0.96) contrast(0.92);
+}
+:root.comfort[data-appearance='dark'] {
+  --parchment: #1b1a17;
+  --viewer-secondary-color: #1b1a17;
+}
+:root.comfort[data-appearance='dark'] .pdfViewer .page {
+  background: #23211c;
+}
+:root.comfort[data-appearance='dark'] .pdfViewer .page canvas,
+:root.comfort[data-appearance='dark'] .browser-layout-translation-block {
+  filter: invert(86%) hue-rotate(180deg) sepia(0.3) brightness(0.92);
+}
+
+a.text-link {
+  text-decoration: none;
+}
+
+/* macOS: the window's traffic lights overlay the left end of the nav bar. */
+:root.is-mac .global-nav {
+  padding-left: 92px;
+}

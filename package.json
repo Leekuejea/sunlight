@@ -1,0 +1,27 @@
+{
+  "name": "sunlight",
+  "productName": "Sunlight",
+  "version": "1.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "build": "vite build",
+    "dev": "tauri dev",
+    "start": "tauri dev",
+    "test": "node --test test/*.test.mjs && cargo test --manifest-path src-tauri/Cargo.toml",
+    "dist": "tauri build",
+    "icons": "tauri icon src-tauri/icons/sunlight.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "html2canvas": "^1.4.1",
+    "katex": "^0.16.11",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "4.5.136",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^5.4.11"
+  },
+  "type": "module"
+}

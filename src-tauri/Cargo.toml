@@ -1,0 +1,42 @@
+[package]
+name = "sunlight"
+version = "1.0.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "Layout-preserving translation reader for research papers"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+axum = { version = "0.7", features = ["multipart"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "net"] }
+tokio-stream = "0.1"
+futures-util = "0.3"
+async-stream = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.10"
+hex = "0.4"
+regex = "1"
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "tls-rustls"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+rust-embed = { version = "8", features = ["include-exclude"] }
+mime_guess = "2"
+open = "5"
+dirs = "5"
+percent-encoding = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "tls-rustls", "coreml"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"

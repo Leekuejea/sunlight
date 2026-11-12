@@ -1,0 +1,7 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+ml/
+.DS_Store
+test/fixtures/*.pdf
