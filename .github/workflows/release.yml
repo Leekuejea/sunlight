@@ -1,4 +1,4 @@
-# Builds signed-when-configured installers for macOS (Apple Silicon + Intel) and Windows.
+# Builds installers for macOS (Apple Silicon + Intel) and Windows.
 # Trigger: push a tag like v1.0.0. The installers are attached to a published GitHub release.
 name: release
 on:
@@ -38,13 +38,9 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional code signing. Without these secrets the build still succeeds, unsigned.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # macOS builds are ad-hoc signed (tauri.conf.json signingIdentity "-"). For Developer ID signing and
+          # notarization add APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID,
+          # APPLE_PASSWORD and APPLE_TEAM_ID here from repository secrets. An empty APPLE_CERTIFICATE fails the build.
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Sunlight ${{ github.ref_name }}

@@ -136,7 +136,7 @@ npm run dist         # src-tauri/target/release/bundle/ 아래 .app, .dmg (Windo
 
 - Windows 설치 파일은 Windows에서 빌드해야 합니다. `.github/workflows/release.yml`이 `v*` 태그를 푸시하면 Mac(Apple Silicon, Intel)과 Windows용을 함께 만들어 GitHub 릴리스에 올립니다.
 - `main`에 푸시하면 `.github/workflows/ci.yml`이 빌드와 테스트를 돌립니다.
-- 코드 서명과 공증은 워크플로의 `APPLE_*` 시크릿을 채우면 적용됩니다. 비워 두면 서명 없이 빌드됩니다.
+- Mac 빌드는 ad-hoc 서명입니다. Developer ID 서명과 공증을 하려면 저장소 시크릿에 `APPLE_*` 값을 넣고 `release.yml`의 env에 연결합니다(빈 값을 넘기면 빌드가 실패합니다).
 - 최소 macOS는 13.4입니다(ONNX Runtime 요구 사항).
 - 로컬 번역에는 [Ollama](https://ollama.com)가 설치되어 있어야 합니다.
 
