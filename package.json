@@ -6,6 +6,7 @@
   "license": "AGPL-3.0-only",
   "scripts": {
     "build": "vite build",
+    "tauri": "tauri",
     "dev": "tauri dev",
     "start": "tauri dev",
     "test": "node --test test/*.test.mjs && cargo test --manifest-path src-tauri/Cargo.toml",
