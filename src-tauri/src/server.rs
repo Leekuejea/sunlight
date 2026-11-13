@@ -28,10 +28,9 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 
 #[derive(rust_embed::RustEmbed)]
 #[folder = "../dist"]
@@ -161,7 +160,7 @@ async fn run_translation(s: Arc<AppState>, req: TranslateRequest, tx: mpsc::Send
     let mut out: Vec<Option<String>> = texts
         .iter()
         .zip(&keys)
-        .map(|(text, key)| if harness::keep_verbatim(text) { Some(text.clone()) } else if reuse_saved { s.cache.get(key) } else { None })
+        .map(|(text, key)| if harness::keep_verbatim(text) { Some(text.clone()) } else if reuse_saved { s.cache.get(key).map(|t| harness::clean_segment(&t)).filter(|t| !t.is_empty()) } else { None })
         .collect();
     let missing: Vec<usize> = (0..texts.len()).filter(|&i| out[i].is_none()).collect();
     let mut sent = 0;
@@ -178,14 +177,27 @@ async fn run_translation(s: Arc<AppState>, req: TranslateRequest, tx: mpsc::Send
         };
     }
 
-    let _local = if engine.provider == Provider::Local && !missing.is_empty() { Some(s.local_lock.lock().await) } else { None };
+    // The viewer gives up on a request when the page is closed, the language or engine changes, or it
+    // retries: stop waiting and drop the upstream request right away so the next one is not held up.
+    let _local = if engine.provider == Provider::Local && !missing.is_empty() {
+        tokio::select! {
+            _ = tx.closed() => return,
+            guard = s.local_lock.lock() => Some(guard),
+        }
+    } else {
+        None
+    };
     let mut started = missing.is_empty(); // hold cached lines until the engine answers, so setup errors keep their status
     for batch in batches(&engine, &missing, &texts) {
         let sources: Vec<&str> = batch.iter().map(|&i| texts[i].as_str()).collect();
         let mut stream = llm::chat(&engine, harness::build_messages(&sources, &target));
         let mut parser = SegmentParser::new(sources.len());
         loop {
-            let (segments, done) = match stream.next().await {
+            let next = tokio::select! {
+                _ = tx.closed() => return,
+                next = stream.next() => next,
+            };
+            let (segments, done) = match next {
                 Some(Ok(chunk)) => (parser.push(&chunk), false),
                 Some(Err(err)) => {
                     eprintln!("[translate] {}", err.message);
@@ -218,25 +230,65 @@ async fn run_translation(s: Arc<AppState>, req: TranslateRequest, tx: mpsc::Send
     let _ = tx.send(Ok("<|end|>".into())).await;
 }
 
+/// How long a request waits for the first line before the response starts. Setup errors (missing key,
+/// model not installed) arrive within it and keep their HTTP status.
+const FIRST_LINE_WAIT: Duration = Duration::from_secs(10);
+/// WebKit drops a request after 60 s without data, which a cold local model or a long first sentence
+/// exceeds: a blank line keeps the stream alive (the viewer's parser ignores it).
+const HEARTBEAT: Duration = Duration::from_secs(15);
+
 async fn translate(State(s): S, Json(req): Json<TranslateRequest>) -> Response {
     let (tx, mut rx) = mpsc::channel(64);
     tokio::spawn(run_translation(s, req, tx));
-    let first = match rx.recv().await {
-        Some(Err(err)) => return text_error(err.status, err.message),
-        Some(Ok(line)) => line,
-        None => String::new(),
+    let first = match tokio::time::timeout(FIRST_LINE_WAIT, rx.recv()).await {
+        Ok(Some(Err(err))) => return text_error(err.status, err.message),
+        Ok(Some(Ok(line))) => Some(line),
+        Ok(None) => return text_error(502, "번역을 시작하지 못했어요.".into()),
+        Err(_) => None,
     };
-    let rest = ReceiverStream::new(rx).filter_map(|item| async { item.ok() });
-    let body = futures_util::stream::once(async { first }).chain(rest).map(Ok::<_, std::convert::Infallible>);
+    let body = async_stream::stream! {
+        if let Some(line) = first {
+            yield line;
+        }
+        loop {
+            match tokio::time::timeout(HEARTBEAT, rx.recv()).await {
+                Ok(Some(Ok(line))) => yield line,
+                // An error after the response started: "<|error|>status|message", read by the viewer.
+                Ok(Some(Err(err))) => {
+                    yield format!("<|error|>{}|{}", err.status, err.message);
+                    break;
+                }
+                Ok(None) => break,
+                Err(_) => yield "\n".to_string(),
+            }
+        }
+    }
+    .map(Ok::<_, std::convert::Infallible>);
     ([(header::CONTENT_TYPE, "text/plain; charset=utf-8"), (header::HeaderName::from_static("x-moonlight-translation-end-marker"), "1")], Body::from_stream(body)).into_response()
 }
+
+const TEST_LIMIT: Duration = Duration::from_secs(40);
 
 async fn llm_test(State(s): S) -> Json<Value> {
     let engine = s.settings.engine();
     let source = "Flow-matching policies have become capable generalist priors for robot manipulation.";
     let started = Instant::now();
-    let _local = if engine.provider == Provider::Local { Some(s.local_lock.lock().await) } else { None };
-    match llm::collect(llm::chat(&engine, harness::build_messages(&[source], "ko"))).await {
+    let run = async {
+        let _local = if engine.provider == Provider::Local { Some(s.local_lock.lock().await) } else { None };
+        llm::collect(llm::chat(&engine, harness::build_messages(&[source], "ko"))).await
+    };
+    // Answer well inside WebKit's 60 s request limit, whatever the engine is doing.
+    let result = tokio::time::timeout(TEST_LIMIT, run).await.unwrap_or_else(|_| {
+        Err(LlmError::new(
+            504,
+            if engine.provider == Provider::Local {
+                "40초 안에 답이 없어요. 다른 쪽을 번역하는 중이거나 모델을 처음 불러오는 중일 수 있어요. 잠시 후 다시 시도해주세요."
+            } else {
+                "40초 안에 답이 없어요. 요청 한도(429)에 걸렸거나 네트워크가 느릴 수 있어요. 잠시 후 다시 시도해주세요."
+            },
+        ))
+    });
+    match result {
         Ok(reply) => {
             let mut parser = SegmentParser::new(1);
             let mut segments = parser.push(&reply);
@@ -282,7 +334,7 @@ async fn models(State(s): S, Query(q): Query<HashMap<String, String>>) -> Respon
 // ---------- local LLM (Ollama) ----------
 
 async fn local_models(State(s): S) -> Json<Value> {
-    let res = HTTP.get(format!("{}/api/tags", s.settings.local_url())).timeout(std::time::Duration::from_secs(3)).send().await;
+    let res = HTTP.get(format!("{}/api/tags", s.settings.local_url())).timeout(Duration::from_secs(3)).send().await;
     let Ok(body) = (match res {
         Ok(r) if r.status().is_success() => r.json::<Value>().await,
         _ => return Json(json!({ "running": false, "models": [] })),

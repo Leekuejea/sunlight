@@ -9,6 +9,16 @@ use futures_util::{Stream, StreamExt};
 use serde_json::{json, Value};
 use std::{pin::Pin, sync::LazyLock, time::Duration};
 
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn gemini_retry_delay_is_read_from_the_body() {
+        let body = r#"{"error":{"code":429,"details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"37s"}]}}"#;
+        assert_eq!(super::retry_delay_ms(body), Some(37000.0));
+        assert_eq!(super::retry_delay_ms("{}"), None);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LlmError {
     pub status: u16,
@@ -23,7 +33,13 @@ impl LlmError {
 
 impl From<reqwest::Error> for LlmError {
     fn from(e: reqwest::Error) -> Self {
-        Self::new(502, format!("네트워크 오류: {e}"))
+        if e.is_timeout() {
+            Self::new(504, "응답 시간이 초과됐어요. 네트워크 상태를 확인하고 다시 시도해주세요.")
+        } else if e.is_connect() {
+            Self::new(502, format!("서버에 연결하지 못했어요. 인터넷 연결이나 방화벽·프록시 설정을 확인해주세요. ({e})"))
+        } else {
+            Self::new(502, format!("네트워크 오류: {e}"))
+        }
     }
 }
 
@@ -154,6 +170,11 @@ fn lines(res: reqwest::Response) -> impl Stream<Item = Result<String, LlmError>>
     }
 }
 
+fn retry_delay_ms(body: &str) -> Option<f64> {
+    static DELAY: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r#""retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s""#).unwrap());
+    DELAY.captures(body)?[1].parse::<f64>().ok().map(|s| s * 1000.0)
+}
+
 fn missing_key(provider: Provider) -> LlmError {
     LlmError::new(401, format!("{} API 키가 없어요. 설정 > API 키에서 입력해주세요.", provider.label()))
 }
@@ -191,7 +212,11 @@ fn openai_compat(engine: Engine, messages: Vec<Message>) -> TextStream {
                 break res;
             }
             let header = |name: &str| res.headers().get(name).and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<f64>().ok());
-            let wait_ms = header("retry-after-ms").or(header("retry-after").map(|s| s * 1000.0)).unwrap_or(3000.0 * f64::from(1u32 << attempt));
+            let wait_ms = match header("retry-after-ms").or(header("retry-after").map(|s| s * 1000.0)) {
+                Some(ms) => ms,
+                // Gemini puts it in the body instead: {"error":{"details":[{"retryDelay":"37s"}]}}
+                None => retry_delay_ms(&res.text().await.unwrap_or_default()).unwrap_or(3000.0 * f64::from(1u32 << attempt)),
+            };
             tokio::time::sleep(Duration::from_millis(wait_ms.clamp(500.0, 60_000.0) as u64)).await;
             attempt += 1;
         };
@@ -322,6 +347,8 @@ fn usable(provider: Provider, id: &str) -> bool {
     }
 }
 
+const LIST_TIMEOUT: Duration = Duration::from_secs(20);
+
 pub async fn list_models(provider: Provider, api_key: &str) -> Result<Vec<String>, LlmError> {
     if api_key.is_empty() {
         return Err(LlmError::new(401, "API 키가 없어요."));
@@ -345,9 +372,14 @@ pub async fn list_models(provider: Provider, api_key: &str) -> Result<Vec<String
             return Ok(vec!["k-exaone_v2.5".into()]);
         }
         Provider::Anthropic => {
-            HTTP.get("https://api.anthropic.com/v1/models?limit=1000").header("x-api-key", api_key).header("anthropic-version", ANTHROPIC_VERSION).send().await?
+            HTTP.get("https://api.anthropic.com/v1/models?limit=1000")
+                .header("x-api-key", api_key)
+                .header("anthropic-version", ANTHROPIC_VERSION)
+                .timeout(LIST_TIMEOUT)
+                .send()
+                .await?
         }
-        _ => HTTP.get(format!("{}/models", provider.base_url())).bearer_auth(api_key).send().await?,
+        _ => HTTP.get(format!("{}/models", provider.base_url())).bearer_auth(api_key).timeout(LIST_TIMEOUT).send().await?,
     };
     if !res.status().is_success() {
         return Err(failure(res, provider.label()).await);

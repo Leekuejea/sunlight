@@ -370,7 +370,7 @@ function Chip({ selected, onClick, children, disabled }) {
 
 function useAsync(fn, deps) {
   const [value, setValue] = useState(null);
-  const reload = () => fn().then(setValue);
+  const reload = () => fn().then(setValue, (err) => setValue({ ok: false, error: err.message, models: [] }));
   useEffect(() => void reload(), deps);
   return [value, reload];
 }
@@ -544,7 +544,7 @@ function EngineTab({ settings, update, goKeys }) {
           disabled={test?.running}
           onClick={async () => {
             setTest({ running: true });
-            setTest(await api('/llm/test', { method: 'POST' }));
+            setTest(await api('/llm/test', { method: 'POST' }).catch((err) => ({ ok: false, error: `연결 테스트를 마치지 못했어요: ${err.message}` })));
           }}
         >
           {test?.running ? '번역해 보는 중…' : '연결 테스트'}
@@ -560,7 +560,7 @@ function KeyRow({ provider, state, update }) {
   const [check, setCheck] = useState(null);
   const verify = async () => {
     setCheck({ running: true });
-    const r = await api(`/models?provider=${provider.id}`);
+    const r = await api(`/models?provider=${provider.id}`).catch((err) => ({ ok: false, error: `키를 확인하지 못했어요: ${err.message}` }));
     setCheck(r.ok ? { ok: true, text: `확인됨 · 사용 가능한 모델 ${r.models.length}개` } : { ok: false, text: r.error });
   };
   return (
@@ -678,12 +678,17 @@ function Reader({ doc, settings, language, setLanguage, setToast, openSettings }
   const [state, setState] = useState({ page: 1, pages: 0, scale: 'auto', layoutActive: false, progress: null });
   const [pageInput, setPageInput] = useState('1');
   const [exporting, setExporting] = useState('');
+  const pageRef = useRef(1);
+  pageRef.current = state.page;
+  // A new engine or model gets a fresh reader: in-flight requests to the old one are cancelled and every
+  // page is translated again (each engine has its own cache), keeping the page being read.
+  const engine = settings ? engineLabel(settings) : '';
 
   useEffect(() => {
     let cancelled = false;
     let reader;
     api(`/library/${doc.id}`, json('PATCH', { lastOpenedAt: Date.now() })).catch(() => {});
-    openReader({ mainContainer: mainRef.current, viewerContainer: viewerRef.current, doc, language, onState: setState }).then(
+    openReader({ mainContainer: mainRef.current, viewerContainer: viewerRef.current, doc, language, initialPage: pageRef.current, onState: setState }).then(
       (r) => {
         if (cancelled) return r.destroy();
         reader = readerRef.current = r;
@@ -695,7 +700,7 @@ function Reader({ doc, settings, language, setLanguage, setToast, openSettings }
       if (readerRef.current === reader) readerRef.current = null;
       reader?.destroy();
     };
-  }, [doc.id, language]);
+  }, [doc.id, language, engine]);
 
   useEffect(() => setPageInput(String(state.page)), [state.page]);
 

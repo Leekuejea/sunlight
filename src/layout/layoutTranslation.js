@@ -29,6 +29,7 @@ const VIEW_MODE_KEY = 'browserLayoutTranslateViewMode';
 const OPEN_DOCS_KEY = 'browserLayoutTranslationOpenDocuments';
 const MAX_REMEMBERED = 200;
 const PANEL_ID = 'browser-layout-translation-panel';
+const STREAM_ERROR = '<|error|>'; // Sunlight server: an engine error after the response started
 const CONTAINER_ID = 'browser-layout-translation-viewer-container';
 const LAYER_CLASS = 'browser-layout-translation-layer';
 const SOURCE_TEXT_CLASS = 'browser-layout-source-text';
@@ -320,6 +321,12 @@ export function createLayoutTranslation(ctx) {
     for (;;) {
       const { done, value } = await reader.read();
       if (!done) raw += decoder.decode(value, { stream: true });
+      const failure = raw.indexOf(STREAM_ERROR);
+      if (failure !== -1) {
+        if (!done) continue; // the server ends the stream right after the error line
+        const [, status, message] = raw.slice(failure + STREAM_ERROR.length).match(/^(\d+)\|([\s\S]*)$/) ?? [];
+        throw Object.assign(new Error(message || 'translation failed'), { status: Number(status) || 502 });
+      }
       const split = splitCompletedStream(raw);
       const complete = !hasEndMarker || split.isFinal;
       const { segments, resolvedCount } = parseTranslatedSegments(split.text, texts, done && complete);

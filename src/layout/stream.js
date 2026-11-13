@@ -12,6 +12,7 @@ const END = '<|end|>';
 const STOPPED = '<|stopped|>';
 const PARTIAL_MARKER_AT_END = /<\|#?[a-z\d]*\|?$/;
 const PARTIAL_TAIL = /<(?:\|#?[a-z\d]*\|?)?$/;
+const STRAY_MARKER = /<\|#?\d+\|?>?/g;
 
 // Drops a trailing formula the model appended after a source ending with ":".
 export function trimAppendedFormula(source, translation) {
@@ -35,18 +36,24 @@ export function splitCompletedStream(text) {
 
 // Only segments followed by the next marker (or all, when final) are resolved. Segments equal to
 // the source are dropped, so that sentence keeps its original rendering.
+// Sunlight: Moonlight drops the whole page when a marker repeats or goes backwards. A model that writes
+// "<|4\n<|4|>" would then leave a fully translated page in the original, so a repeated marker replaces the
+// earlier one and an out-of-order or out-of-range marker is ignored.
 export function parseTranslatedSegments(text, sources, isFinal) {
-  const markers = [...text.matchAll(MARKER)].map((m) => ({ index: Number(m[1]), start: m.index ?? 0, end: (m.index ?? 0) + m[0].length }));
-  const broken = markers.some((m, i) => m.index >= sources.length || (i > 0 && m.index <= markers[i - 1].index));
-  const raw = broken
-    ? []
-    : markers.flatMap((m, i) => {
-        const next = markers[i + 1];
-        const body = text.slice(m.end, next ? next.start : undefined).trim();
-        return (!next && !isFinal) || m.index >= sources.length || !body
-          ? []
-          : [{ index: m.index, nextIndex: Math.min(next ? next.index : sources.length, sources.length), text: body }];
-      });
+  const all = [...text.matchAll(MARKER)].map((m) => ({ index: Number(m[1]), start: m.index ?? 0, end: (m.index ?? 0) + m[0].length }));
+  const markers = [];
+  for (const marker of all) {
+    const last = markers[markers.length - 1];
+    if (marker.index >= sources.length || (last && marker.index < last.index)) continue;
+    if (last && marker.index === last.index) markers.pop();
+    markers.push(marker);
+  }
+  const raw = markers.flatMap((m, i) => {
+    const next = markers[i + 1];
+    const cut = all.find((x) => x.start >= m.end); // an ignored marker still ends this segment
+    const body = text.slice(m.end, cut ? cut.start : undefined).replace(STRAY_MARKER, '').trim();
+    return (!next && !isFinal) || !body ? [] : [{ index: m.index, nextIndex: Math.min(next ? next.index : sources.length, sources.length), text: body }];
+  });
   return {
     segments: raw
       .filter((s) => s.text !== sources[s.index].trim())

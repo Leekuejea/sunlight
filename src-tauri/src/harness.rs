@@ -42,9 +42,10 @@ static MATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\$\$?([^$]+)\$\$?")
 static COMMAND: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\\[a-zA-Z]+").unwrap());
 static MARKUP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[{}^_\\\s]").unwrap());
 static SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
-static MARKER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<\|(\d+)\|>").unwrap());
+/// Models sometimes write "<|4>", "<|4|" or a bare "<|4" for "<|4|>": all of them start segment 4.
+static MARKER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<\|#?(\d+)(\|>|>|\|)?").unwrap());
 static THINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<think>.*?</think>").unwrap());
-static NOISE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<\|(?:end|stopped)\|>|```\w*").unwrap());
+static NOISE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<\|(?:end|stopped)\|>|<\|#?\d+\|?>?|```\w*").unwrap());
 static LIMITS_ECHO: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)\n\s*Character limits:.*$").unwrap());
 
 /// Rendered width of math is far below its LaTeX source length.
@@ -178,8 +179,11 @@ impl SegmentParser {
     }
 
     fn collect(&mut self, is_final: bool) -> Option<usize> {
+        let len = self.buffer.len();
         let markers: Vec<(usize, usize, usize)> = MARKER
             .captures_iter(&self.buffer)
+            // "<|1" at the end of a partial buffer may still grow into "<|12|>": wait for more text.
+            .filter(|c| is_final || c.get(2).is_some_and(|m| m.as_str() == "|>") || c.get(0).is_some_and(|m| m.end() < len))
             .filter_map(|c| Some((c.get(0)?.start(), c.get(0)?.end(), c[1].parse().ok()?)))
             .collect();
         for (k, &(_, end, index)) in markers.iter().enumerate() {
@@ -264,6 +268,20 @@ mod tests {
         assert!(keep_verbatim("Jane Doe† Robotics Institute, CMU {jdoe, okroemer}@andrew.cmu.edu †Equal advising"));
         assert!(keep_verbatim("Code: https://github.com/x/y"));
         assert!(!keep_verbatim("We propose a sampler that projects each draw to the nearest safe action."));
+    }
+
+    #[test]
+    fn malformed_markers_still_split_segments() {
+        let mut p = SegmentParser::new(4);
+        let mut all = texts(p.push("<|0|>가.\n<|1>나.\n<|2\n<|2|>다.\n<|3"));
+        all.extend(texts(p.push("|>라.")));
+        all.extend(texts(p.finish()));
+        assert_eq!(all, vec![(0, Some("가.".into())), (1, Some("나.".into())), (2, Some("다.".into())), (3, Some("라.".into()))]);
+    }
+
+    #[test]
+    fn stray_marker_fragments_are_stripped() {
+        assert_eq!(clean_segment("옵니다.\n<|4"), "옵니다.");
     }
 
     #[test]
