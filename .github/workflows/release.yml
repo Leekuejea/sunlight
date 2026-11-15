@@ -15,9 +15,11 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            args: --target aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --bundles app,dmg
+          # One Windows installer only: an .msi (per machine) next to the NSIS setup (per user) let people end
+          # up with two installed copies.
           - os: windows-latest
-            args: ''
+            args: --bundles nsis
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

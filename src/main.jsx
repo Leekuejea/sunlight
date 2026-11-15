@@ -394,7 +394,7 @@ function useAsync(fn, deps) {
   return [value, reload];
 }
 
-function GeneralTab({ prefs, setPrefs }) {
+function GeneralTab({ prefs, setPrefs, version }) {
   return (
     <div className="settings-section">
       <h3 className="body-strong">화면 모드</h3>
@@ -425,6 +425,13 @@ function GeneralTab({ prefs, setPrefs }) {
         ))}
       </div>
       <p className="caption muted">영어 논문은 한국어로, 한국어 논문은 영어로 번역합니다.</p>
+      <h3 className="body-strong">버전</h3>
+      <p className="caption muted">
+        Sunlight {version ?? '—'} ·{' '}
+        <a className="text-link caption" href="https://github.com/Leekuejea/sunlight/releases/latest" target="_blank" rel="noreferrer">
+          최신 버전 확인
+        </a>
+      </p>
     </div>
   );
 }
@@ -680,7 +687,7 @@ function SettingsModal({ tab, setTab, onClose, settings, setSettings, prefs, set
           <button className="modal-close" onClick={onClose} aria-label="닫기">
             ✕
           </button>
-          {tab === 'general' && <GeneralTab prefs={prefs} setPrefs={setPrefs} />}
+          {tab === 'general' && <GeneralTab prefs={prefs} setPrefs={setPrefs} version={settings.version} />}
           {tab === 'engine' && <EngineTab settings={settings} update={update} goKeys={() => setTab('keys')} />}
           {tab === 'keys' && <KeysTab settings={settings} update={update} />}
         </div>

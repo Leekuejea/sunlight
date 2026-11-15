@@ -304,13 +304,20 @@ async fn llm_test(State(s): S) -> Json<Value> {
 
 // ---------- settings & models ----------
 
+/// Settings as the UI sees them, plus the running app's version (shown in Settings > 일반).
+fn settings_view(s: &AppState) -> Value {
+    let mut v = s.settings.public();
+    v["version"] = json!(env!("CARGO_PKG_VERSION"));
+    v
+}
+
 async fn get_settings(State(s): S) -> Json<Value> {
-    Json(s.settings.public())
+    Json(settings_view(&s))
 }
 
 async fn put_settings(State(s): S, Json(patch): Json<Value>) -> Response {
     match s.settings.update(&patch) {
-        Ok(()) => Json(s.settings.public()).into_response(),
+        Ok(()) => Json(settings_view(&s)).into_response(),
         Err(message) => text_error(500, message),
     }
 }
