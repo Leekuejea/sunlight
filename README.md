@@ -32,9 +32,13 @@ macOS 13.4 이상, Apple Silicon Mac(M1 이후)이 필요합니다. 내 Mac 종�
 
 ### 업데이트
 
-새 버전의 설치 파일로 그대로 덮어 설치합니다. 앱을 켠 채로 설치해도 됩니다.
+v1.2.0부터는 앱이 스스로 업데이트합니다. 새 버전이 나오면 앱을 켤 때 “새 버전 x.y.z가 있어요” 알림이 뜨고, **업데이트**를 누르면 내려받아 설치한 뒤 다시 시작합니다. **설정 > 일반 > 버전 > 업데이트 확인**으로 직접 확인할 수도 있습니다.
+- 앱 안에서 받은 업데이트는 macOS의 “열지 않음” 경고가 다시 나오지 않습니다. 브라우저로 받은 파일에만 붙는 다운로드 표시가 없기 때문입니다.
+- 업데이트 파일은 서명을 확인한 뒤에만 설치합니다.
+
+v1.1.1 이하에서는 v1.2.0을 한 번만 직접 설치합니다. 새 버전의 설치 파일로 그대로 덮어 설치하면 되고, 앱을 켠 채로 설치해도 됩니다.
 - **macOS**: `.dmg`의 Sunlight를 응용 프로그램 폴더에 끌어다 놓고 **대치**를 고릅니다. 위 2·3번 경고가 다시 나올 수 있습니다.
-- **Windows**: 설치 프로그램이 실행 중인 Sunlight를 닫겠냐고 물으면 **확인**을 누릅니다.
+- **Windows**: 설치 프로그램이 실행 중인 Sunlight를 닫겠냐고 물으면 **확인**을 누릅니다. 앱 안 업데이트는 설치 창이 잠깐 보였다가 자동으로 끝납니다.
 - 옛 버전이 켜져 있는 상태에서 새 버전을 열면, 옛 버전이 스스로 닫히고 새 버전이 열립니다(v1.1.1부터).
 - 지금 실행 중인 버전은 **설정 > 일반 > 버전**에서 확인합니다.
 
@@ -154,6 +158,7 @@ npm run dist         # src-tauri/target/release/bundle/ 아래 .app, .dmg (Windo
 
 - Windows 설치 파일은 Windows에서 빌드해야 합니다. `.github/workflows/release.yml`이 `v*` 태그를 푸시하면 Mac(Apple Silicon)과 Windows용을 함께 만들어 GitHub 릴리스에 올립니다.
 - `main`에 푸시하면 `.github/workflows/ci.yml`이 빌드와 테스트를 돌립니다.
+- 앱 안 업데이트(`src-tauri/src/update.rs`, `tauri-plugin-updater`)는 릴리스의 `latest.json`을 확인합니다. 업데이트 패키지는 CI가 `TAURI_SIGNING_PRIVATE_KEY`(저장소 Secret)로 서명하고, 앱은 `tauri.conf.json`의 공개 키로 검증합니다. 이 개인 키를 잃으면 기존 설치본에 업데이트를 보낼 수 없으니 따로 백업해 둡니다. 로컬 시험은 `SUNLIGHT_UPDATE_URL`로 다른 `latest.json`을 가리키게 할 수 있습니다(https만 허용).
 - Mac 빌드는 ad-hoc 서명입니다. Developer ID 서명과 공증을 하려면 저장소 시크릿에 `APPLE_*` 값을 넣고 `release.yml`의 env에 연결합니다(빈 값을 넘기면 빌드가 실패합니다).
 - 최소 macOS는 13.4입니다(ONNX Runtime 요구 사항).
 - 로컬 번역에는 [Ollama](https://ollama.com)가 설치되어 있어야 합니다.

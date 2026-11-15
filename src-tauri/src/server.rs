@@ -656,6 +656,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/boxes/:doc/:page", get(get_boxes).put(put_boxes))
         .route("/api/thumbs/:id", get(get_thumb).put(put_thumb))
         .route("/api/memos/:doc", get(get_memos).put(put_memos))
+        .route("/api/update", get(crate::update::check))
+        .route("/api/update/install", post(crate::update::install))
         .route("/api/library", get(library_list).post(library_add))
         .route("/api/library/:id", axum::routing::patch(library_patch).delete(library_delete))
         .route("/files/:name", get(pdf_file))

@@ -1,6 +1,6 @@
 [package]
 name = "sunlight"
-version = "1.1.1"
+version = "1.2.0"
 edition = "2021"
 license = "AGPL-3.0-only"
 description = "Layout-preserving translation reader for research papers"
@@ -30,6 +30,7 @@ mime_guess = "2"
 open = "5"
 dirs = "5"
 percent-encoding = "2"
+tauri-plugin-updater = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "tls-rustls", "coreml"] }

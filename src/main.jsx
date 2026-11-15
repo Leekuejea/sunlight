@@ -106,6 +106,62 @@ function ConfirmHost() {
   );
 }
 
+// Downloads and installs the new version, then the app restarts itself. onStatus gets readable progress text.
+async function installUpdate(onStatus) {
+  try {
+    const res = await fetch('/api/update/install', { method: 'POST' });
+    const ndjson = (res.headers.get('content-type') ?? '').includes('ndjson');
+    if (!ndjson) return onStatus({ error: (await res.json().catch(() => ({})))?.error ?? '업데이트를 시작하지 못했어요.' });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let rest = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      rest += decoder.decode(value, { stream: true });
+      const lines = rest.split('\n');
+      rest = lines.pop();
+      for (const line of lines.filter(Boolean)) {
+        const m = JSON.parse(line);
+        if (m.error) return onStatus({ error: m.error });
+        onStatus({ text: m.pct != null ? `${m.status} ${m.pct}%` : m.status, done: m.done });
+      }
+    }
+  } catch {
+    // The connection drops when the app restarts into the new version (or the Windows installer closes it).
+    onStatus({ text: '다시 시작하는 중', done: true });
+  }
+}
+
+function UpdateRow() {
+  const [state, setState] = useState(null); // { checking } | check result | { installing, text } | { error }
+  const check = () => {
+    setState({ checking: true });
+    api('/update').then(setState, (err) => setState({ ok: false, error: err.message }));
+  };
+  const install = () => {
+    setState({ installing: true, text: '시작하는 중' });
+    installUpdate((s) => setState(s.error ? { ok: false, error: s.error } : { installing: true, text: s.text }));
+  };
+  if (state?.installing) return <span className="caption muted">업데이트 · {state.text}</span>;
+  return (
+    <>
+      {state?.ok && state.available && (
+        <button className="pill primary small" onClick={install}>
+          {state.version}으로 업데이트
+        </button>
+      )}
+      {state?.ok && !state.available && <span className="caption muted">최신 버전이에요.</span>}
+      {state?.ok === false && <span className="caption error">{state.error}</span>}
+      {!state?.available && (
+        <button className="text-link caption" onClick={check} disabled={state?.checking}>
+          {state?.checking ? '확인 중…' : '업데이트 확인'}
+        </button>
+      )}
+    </>
+  );
+}
+
 function SunMark({ size = 18 }) {
   return (
     <svg className="sun-mark" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
@@ -141,7 +197,7 @@ function GlobalNav({ page, onNavigate, onSettings }) {
 
 function Toast({ toast, onClose }) {
   useEffect(() => {
-    if (!toast) return;
+    if (!toast || toast.sticky) return;
     const t = setTimeout(onClose, 6000);
     return () => clearTimeout(t);
   }, [toast]);
@@ -152,6 +208,11 @@ function Toast({ toast, onClose }) {
       {toast.action && (
         <button className="text-link" onClick={toast.action.run}>
           {toast.action.label}
+        </button>
+      )}
+      {toast.sticky && toast.action && (
+        <button className="text-link muted" onClick={onClose} aria-label="닫기">
+          나중에
         </button>
       )}
     </div>
@@ -426,11 +487,8 @@ function GeneralTab({ prefs, setPrefs, version }) {
       </div>
       <p className="caption muted">영어 논문은 한국어로, 한국어 논문은 영어로 번역합니다.</p>
       <h3 className="body-strong">버전</h3>
-      <p className="caption muted">
-        Sunlight {version ?? '—'} ·{' '}
-        <a className="text-link caption" href="https://github.com/Leekuejea/sunlight/releases/latest" target="_blank" rel="noreferrer">
-          최신 버전 확인
-        </a>
+      <p className="caption muted inline">
+        Sunlight {version ?? '—'} <UpdateRow />
       </p>
     </div>
   );
@@ -883,6 +941,30 @@ function App() {
   const [settingsTab, setSettingsTab] = useState(null);
   const [prefs, setPrefs] = usePrefs();
   useEffect(() => void api('/settings').then(setSettings), []);
+  // Once per launch, a few seconds in: offer a newer version without getting in the way.
+  useEffect(() => {
+    const t = setTimeout(
+      () =>
+        api('/update')
+          .then((u) => {
+            if (!u?.ok || !u.available) return;
+            setToast({
+              text: `새 버전 ${u.version}이 있어요.`,
+              action: {
+                label: '업데이트',
+                run: () => {
+                  setToast({ text: '업데이트를 내려받는 중…', sticky: true });
+                  installUpdate((s) => setToast(s.error ? { text: s.error } : { text: `업데이트 · ${s.text}`, sticky: true }));
+                },
+              },
+              sticky: true,
+            });
+          })
+          .catch(() => {}),
+      4000,
+    );
+    return () => clearTimeout(t);
+  }, []);
   useEffect(() => {
     const onRejection = (e) => e.reason?.toast && setToast({ text: e.reason.message });
     window.addEventListener('unhandledrejection', onRejection);

@@ -39,6 +39,9 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the in-app update packages; the app checks them against the public key in tauri.conf.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # macOS builds are ad-hoc signed (tauri.conf.json signingIdentity "-"). For Developer ID signing and
           # notarization add APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID,
           # APPLE_PASSWORD and APPLE_TEAM_ID here from repository secrets. An empty APPLE_CERTIFICATE fails the build.
@@ -46,4 +49,5 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: Sunlight ${{ github.ref_name }}
           releaseDraft: false
+          uploadUpdaterJson: true # latest.json, the endpoint the app polls
           args: ${{ matrix.args }}

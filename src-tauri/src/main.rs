@@ -7,6 +7,7 @@ mod harness;
 mod llm;
 mod server;
 mod store;
+mod update;
 
 use std::{
     net::TcpListener,
@@ -66,7 +67,9 @@ fn main() {
                 let _ = w.set_focus();
             }
         }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            let _ = update::APP.set(app.handle().clone());
             let _ = STARTED_FROM.set(std::env::current_exe().ok().and_then(|p| stamp(&p)));
             let data_dir = dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("Sunlight");
             let exports_dir = dirs::document_dir().unwrap_or_else(|| data_dir.clone()).join("Sunlight").join("Translations");
