@@ -29,7 +29,7 @@ export async function renderThumbnail(url, width = 320) {
 const NARROW_CLASS = 'moonlight-viewer-tablet-portrait';
 const NARROW_WIDTH = 900;
 
-export async function openReader({ mainContainer, viewerContainer, doc, language, initialPage = 1, onState, onTranslationFailure }) {
+export async function openReader({ mainContainer, viewerContainer, doc, language, initialPage = 1, onState, onTranslationFailure, onNotice }) {
   const pdfjsViewer = await viewerModule;
   const loadingTask = pdfjsLib.getDocument({ url: `/files/${doc.id}.pdf`, cMapUrl: './pdfjs/cmaps/', cMapPacked: true, standardFontDataUrl: './pdfjs/standard_fonts/' });
   const pdfDocument = await loadingTask.promise;
@@ -53,6 +53,8 @@ export async function openReader({ mainContainer, viewerContainer, doc, language
     onStateChange: (active) => emit({ layoutActive: active }),
     onProgress: (progress) => emit({ progress }),
     onFailure: onTranslationFailure,
+    onNotice,
+    docKey: doc.id,
   });
 
   // Trackpad pinch arrives as ctrl+wheel; zoom around the pointer, accumulating small deltas

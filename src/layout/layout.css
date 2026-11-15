@@ -334,3 +334,249 @@ a.browser-layout-translation-link {
 a.browser-layout-translation-link:hover {
   background-color: rgb(0 100 255 / 0.18);
 }
+
+/*
+ * 문장 메모 (Sunlight). 사이드바는 PDF 뷰어 밖에 있어 확대·축소의 영향을 받지 않는다.
+ * 하이라이트 위치는 --scale-factor 로 계산해 배율이 바뀌어도 문장에 붙어 있다.
+ */
+:root {
+  --memo-width: 300px;
+  --memo-yellow: rgb(255 236 130 / 0.38);
+  --memo-yellow-active: rgb(255 226 90 / 0.62);
+  --memo-orange: rgb(255 176 96 / 0.38);
+  --memo-orange-active: rgb(255 158 66 / 0.62);
+}
+
+.reader {
+  position: relative;
+}
+
+:root.sunlight-memos-open #mainContainer {
+  margin-right: var(--memo-width);
+}
+
+.sunlight-memo-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+
+.sunlight-memo-layer .sunlight-memo-mark {
+  position: absolute;
+  margin: -1px;
+  padding: 1px;
+  border-radius: 3px;
+}
+
+.sunlight-memo-mark.yellow {
+  background-color: var(--memo-yellow);
+}
+.sunlight-memo-mark.orange {
+  background-color: var(--memo-orange);
+}
+.sunlight-memo-mark.yellow.active {
+  background-color: var(--memo-yellow-active);
+}
+.sunlight-memo-mark.orange.active {
+  background-color: var(--memo-orange-active);
+}
+.browser-layout-translation-sentence {
+  cursor: pointer;
+}
+
+.sunlight-memo-sidebar {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--memo-width);
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  background: var(--parchment, #f5f5f7);
+  border-left: 1px solid rgb(0 0 0 / 0.1);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink, #1d1d1f);
+  z-index: 46;
+}
+:root.sunlight-memos-open .sunlight-memo-sidebar {
+  display: flex;
+}
+
+.sunlight-memo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sunlight-memo-close,
+.sunlight-memo-more,
+.sunlight-memo-delete {
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  font: inherit;
+  color: var(--action-blue, #0066cc);
+  cursor: pointer;
+}
+.sunlight-memo-delete {
+  margin-left: auto;
+  color: rgb(128 128 128);
+}
+
+.sunlight-memo-tab {
+  position: absolute;
+  right: 12px;
+  margin-top: 10px;
+  padding: 5px 12px;
+  border: 1px solid rgb(0 0 0 / 0.12);
+  border-radius: 999px;
+  background: var(--canvas, #fff);
+  color: var(--ink, #1d1d1f);
+  font-size: 12px;
+  cursor: pointer;
+  z-index: 46;
+}
+.sunlight-memo-tab[hidden] {
+  display: none;
+}
+
+.sunlight-memo-card {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--canvas, #fff);
+  border: 1px solid rgb(0 0 0 / 0.08);
+  border-left: 4px solid var(--memo-yellow-active);
+  min-width: 0;
+}
+.sunlight-memo-card.orange {
+  border-left-color: var(--memo-orange-active);
+}
+.sunlight-memo-card.active {
+  border-color: rgb(0 0 0 / 0.22);
+  border-left-color: rgb(245 200 40);
+}
+.sunlight-memo-card.orange.active {
+  border-left-color: rgb(240 140 40);
+}
+.sunlight-memo-card > header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+}
+.sunlight-memo-num {
+  font-weight: 600;
+}
+.sunlight-memo-meta,
+.sunlight-memo-count,
+.sunlight-memo-orphan {
+  font-size: 11px;
+  color: rgb(128 128 128);
+}
+.sunlight-memo-orphan {
+  margin: 0;
+  color: #b3541e;
+}
+.sunlight-memo-card blockquote {
+  margin: 0;
+  padding-left: 8px;
+  border-left: 2px solid rgb(0 0 0 / 0.12);
+  font-size: 11px;
+  color: rgb(128 128 128);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: pointer;
+}
+.sunlight-memo-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 9em; /* 6 lines; "더 보기" opens the rest */
+  overflow: hidden;
+  cursor: text;
+}
+.sunlight-memo-text.expanded {
+  max-height: none;
+}
+.sunlight-memo-text a {
+  color: var(--action-blue, #0066cc);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.sunlight-memo-more {
+  align-self: flex-start;
+  padding: 0;
+  font-size: 12px;
+}
+.sunlight-memo-input {
+  width: 100%;
+  min-height: 3.2em;
+  max-height: 40vh; /* longer memos scroll inside the box */
+  box-sizing: border-box;
+  resize: none;
+  border: 1px solid rgb(0 0 0 / 0.18);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  color: inherit;
+  background: var(--canvas, #fff);
+  overflow-y: auto;
+}
+.sunlight-memo-input:focus {
+  outline: 2px solid var(--action-blue, #0066cc);
+  outline-offset: -1px;
+}
+.sunlight-memo-card footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sunlight-memo-card footer[hidden],
+.sunlight-memo-count[hidden] {
+  display: none;
+}
+.sunlight-memo-chip {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgb(0 0 0 / 0.15);
+  cursor: pointer;
+}
+.sunlight-memo-chip.yellow {
+  background: rgb(255 240 150);
+}
+.sunlight-memo-chip.orange {
+  background: rgb(255 190 120);
+}
+.sunlight-memo-chip[aria-pressed='true'] {
+  box-shadow: 0 0 0 2px var(--canvas, #fff), 0 0 0 4px var(--action-blue, #0066cc);
+}
+.sunlight-memo-count {
+  margin-left: auto;
+}
+.sunlight-memo-count.full {
+  color: #c0392b;
+}
+:root[data-appearance='dark'] .sunlight-memo-sidebar {
+  border-left-color: rgb(255 255 255 / 0.14);
+}
+:root[data-appearance='dark'] .sunlight-memo-card,
+:root[data-appearance='dark'] .sunlight-memo-input,
+:root[data-appearance='dark'] .sunlight-memo-tab {
+  border-color: rgb(255 255 255 / 0.16);
+}
+:root[data-appearance='dark'] .sunlight-memo-layer {
+  mix-blend-mode: screen;
+}

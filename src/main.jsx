@@ -727,7 +727,7 @@ function Reader({ doc, settings, language, setLanguage, setToast, openSettings, 
       lastFailure = message;
       setToast({ text: message, action: { label: '설정 열기', run: openSettings } });
     };
-    openReader({ mainContainer: mainRef.current, viewerContainer: viewerRef.current, doc, language, initialPage: pageRef.current, onState: setState, onTranslationFailure }).then(
+    openReader({ mainContainer: mainRef.current, viewerContainer: viewerRef.current, doc, language, initialPage: pageRef.current, onState: setState, onTranslationFailure, onNotice: (text, action) => !cancelled && setToast({ text, action }) }).then(
       (r) => {
         if (cancelled) return r.destroy();
         reader = readerRef.current = r;

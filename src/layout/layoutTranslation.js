@@ -6,6 +6,7 @@
 // the original box.
 import katex from 'katex';
 import { buildLayoutBlocks, resolveFontFamily, getSourceTextPieces, isFigureInternalText, isTableCellText, isHeadingText, isLegibleFit } from './layoutBlocks.js';
+import { createMemos } from './memos.js';
 import { buildPageSentences, composeBlockParts, getPartsSignature, getSentenceRects, containsPoint } from './sentences.js';
 import { TRANSLATION_END_MARKER_HEADER, splitCompletedStream, parseTranslatedSegments, getTranslatedBoldPrefixLength, isRetryableTranslationFailure, getTranslationRetryDelayMs } from './stream.js';
 import { setLayoutLayerGeometry, unrotateLayoutPoint, getLayoutCanvasRect, getSafeBlockWidth, getBlockLink, locateTranslatedLinks, bindLayoutLink } from './geometry.js';
@@ -197,7 +198,7 @@ function linkifySentence(span, links, linkService) {
 }
 
 export function createLayoutTranslation(ctx) {
-  const { pdfjsViewer, pdfDocument, source, mainContainer, pageBoxes, requestTranslation, getLanguage, onStateChange, onProgress, onFailure } = ctx;
+  const { pdfjsViewer, pdfDocument, source, mainContainer, pageBoxes, requestTranslation, getLanguage, onStateChange, onProgress, onFailure, onNotice, docKey } = ctx;
   const pages = new Map(); // pageIndex -> state
   const loading = new Map(); // pageIndex -> Promise<state>
   const queue = [];
@@ -296,6 +297,7 @@ export function createLayoutTranslation(ctx) {
           quietRetry: false,
         };
         pages.set(pageIndex, state);
+        memos.paint(pageIndex);
         if (blocks.length > 0) enqueue(pageIndex);
         else resolveSettled();
         reportProgress();
@@ -620,6 +622,7 @@ export function createLayoutTranslation(ctx) {
     clearMatch();
     if (state.status === 'failed' || state.quietRetry) layer.append(failureNotice(pageIndex, state));
     updateLinkPointerEvents(view.div);
+    memos.paint(pageIndex);
   }
 
   // ---------- scroll / scale sync ----------
@@ -724,6 +727,30 @@ export function createLayoutTranslation(ctx) {
     setTimeout(relayout, 220);
   };
 
+  // ---------- memos (Sunlight addition) ----------
+  const memos = createMemos({
+    docKey,
+    apiBase: '/api',
+    host: mainContainer,
+    signal,
+    isActive,
+    pageState: (i) => pages.get(i),
+    rectsOf: (state, i) => getSentenceRects(state.blocks, state.sentences, i),
+    sourcePageDiv: (i) => source.pdfViewer._pages?.[i]?.div,
+    translatedPageDiv: (i) => translated?.pdfViewer._pages?.[i]?.div,
+    setLayerGeometry: (layer, state) => setLayoutLayerGeometry(layer, state.size, source.pdfViewer.pagesRotation ?? 0),
+    scaled,
+    // Scrolls the source to a sentence; the translated pane follows through the scroll sync.
+    reveal(pageIndex, rect) {
+      const view = source.pdfViewer._pages?.[pageIndex];
+      if (!view?.div) return;
+      const offset = rect ? rect.top * (view.viewport?.scale ?? 1) : 0;
+      source.container.scrollTop = Math.max(0, view.div.offsetTop + offset - source.container.clientHeight / 3);
+    },
+    relayout: () => scheduleRelayout(),
+    notify: (text, action) => onNotice?.(text, action),
+  });
+
   // ---------- hover matching (module 70850) ----------
   function sourcePageDiv(pageIndex) {
     return source.pdfViewer._pages?.[pageIndex]?.div;
@@ -770,7 +797,44 @@ export function createLayoutTranslation(ctx) {
     srcDiv.append(layer);
   }
 
+  // The sentences under a pointer event on a source page: the translated part that contains them, or the
+  // single sentence while its translation has not arrived.
+  function sourceHit(e) {
+    const pageDiv = e.target?.closest?.('.page');
+    const pageIndex = pageIndexOf(pageDiv ?? null);
+    const state = pageIndex === undefined ? undefined : pages.get(pageIndex);
+    const scale = pageIndex === undefined ? undefined : source.pdfViewer._pages?.[pageIndex]?.viewport?.scale;
+    if (!pageDiv || pageIndex === undefined || !state || !scale) return undefined;
+    const box = pageDiv.getBoundingClientRect();
+    const { x, y } = unrotateLayoutPoint({ x: (e.clientX - box.left - pageDiv.clientLeft) / scale, y: (e.clientY - box.top - pageDiv.clientTop) / scale }, state.size, source.pdfViewer.pagesRotation ?? 0);
+    const index = state.sentences.findIndex((_, i) => sentenceRects(state, i).some((r) => containsPoint(r, x, y)));
+    if (index === -1) return undefined;
+    const part = [...state.parts.values()].flat().find((p) => p.translated && p.members.includes(index));
+    return { pageIndex, members: part ? part.members : [index], translated: !!part };
+  }
+
+  // A plain click on a sentence opens its memo; selecting text, links and buttons keep their own meaning.
+  const isMemoClick = (e) => isActive() && e.button === 0 && !e.defaultPrevented && !(e.target instanceof Element && e.target.closest('a, button')) && (window.getSelection()?.isCollapsed ?? true);
+
   function attachInteractions(container) {
+    container.addEventListener(
+      'click',
+      (e) => {
+        if (!isMemoClick(e)) return;
+        const span = e.target.closest?.(`.${SENTENCE_CLASS}`);
+        const pageIndex = pageIndexOf(span ?? null);
+        if (span && pageIndex !== undefined) memos.open(pageIndex, (span.dataset.members ?? '').split(',').map(Number));
+      },
+      { signal },
+    );
+    source.container.addEventListener(
+      'click',
+      (e) => {
+        const hit = isMemoClick(e) ? sourceHit(e) : undefined;
+        if (hit) memos.open(hit.pageIndex, hit.members);
+      },
+      { signal },
+    );
     let frame;
     container.addEventListener('mouseover', (e) => {
       if (!isActive()) return;
@@ -789,19 +853,8 @@ export function createLayoutTranslation(ctx) {
       frame = requestAnimationFrame(() => {
         frame = undefined;
         if (!isActive() || epoch !== hoverEpoch) return;
-        const pageDiv = e.target?.closest?.('.page');
-        const pageIndex = pageIndexOf(pageDiv ?? null);
-        const state = pageIndex === undefined ? undefined : pages.get(pageIndex);
-        const scale = pageIndex === undefined ? undefined : source.pdfViewer._pages?.[pageIndex]?.viewport?.scale;
-        if (!pageDiv || pageIndex === undefined || !state || !scale) return void clearMatch();
-        const box = pageDiv.getBoundingClientRect();
-        const { x, y } = unrotateLayoutPoint(
-          { x: (e.clientX - box.left - pageDiv.clientLeft) / scale, y: (e.clientY - box.top - pageDiv.clientTop) / scale },
-          state.size,
-          source.pdfViewer.pagesRotation ?? 0,
-        );
-        const part = [...state.parts.values()].flat().filter((p) => p.translated).find((p) => p.members.some((m) => sentenceRects(state, m).some((r) => containsPoint(r, x, y))));
-        if (part) showMatch(pageIndex, part.members);
+        const hit = sourceHit(e);
+        if (hit?.translated) showMatch(hit.pageIndex, hit.members);
         else clearMatch();
       });
     }, { signal });
@@ -895,6 +948,7 @@ export function createLayoutTranslation(ctx) {
     ['wheel', 'touchstart', 'touchmove', 'keydown'].forEach((t) => container.addEventListener(t, holdSource, { passive: true, signal }));
     container.addEventListener('pointerdown', () => (pointerDown = true), { signal });
     ['pointerup', 'pointercancel'].forEach((t) => window.addEventListener(t, () => (pointerDown = false), { signal }));
+    source.eventBus.on('pagerendered', ({ pageNumber }) => memos.paint(pageNumber - 1)); // PDF.js drops extra layers on re-render
     source.eventBus.on('scalechanging', () => {
       clearMatch();
       if (isActive()) requestAnimationFrame(syncGeometry);
@@ -968,6 +1022,7 @@ export function createLayoutTranslation(ctx) {
       applyViewMode('split', { remember: false });
     }
     scheduleRelayout();
+    memos.sync();
     onStateChange?.(isActive());
   }
 

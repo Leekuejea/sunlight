@@ -43,6 +43,7 @@ pub struct AppState {
     pub detector: Detector,
     pub box_dir: PathBuf,
     pub thumb_dir: PathBuf,
+    pub memo_dir: PathBuf,
     pub exports_dir: PathBuf,
     /// One local generation at a time: the Mac's throughput is fixed, so parallel pages only slow
     /// down the page being read (measured: 2 parallel requests take as long as 2 sequential ones).
@@ -65,6 +66,7 @@ impl AppState {
             detector: Detector::new(model),
             box_dir: dir("boxes"),
             thumb_dir: dir("thumbs"),
+            memo_dir: dir("memos"),
             exports_dir,
             local_lock: tokio::sync::Mutex::new(()),
             port,
@@ -421,6 +423,42 @@ async fn put_thumb(State(s): S, UrlPath(id): UrlPath<String>, body: Bytes) -> St
     put_blob(blob_path(&s.thumb_dir, &[&id], "jpg"), body).await
 }
 
+// ---------- memos ----------
+// One JSON file per document, next to the library and outside the translation cache: clearing the
+// cache or changing the engine never touches notes. Written atomically, so a crash keeps the old file.
+
+const MEMO_FILE_LIMIT: usize = 4 << 20;
+
+async fn get_memos(State(s): S, UrlPath(doc): UrlPath<String>) -> Response {
+    let Some(path) = blob_path(&s.memo_dir, &[&doc], "json") else { return StatusCode::NOT_FOUND.into_response() };
+    match tokio::fs::read(path).await {
+        Ok(bytes) => ([(header::CONTENT_TYPE, "application/json")], bytes).into_response(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Json(json!({ "version": 1, "memos": [] })).into_response(),
+        Err(e) => text_error(500, format!("메모를 읽지 못했어요: {e}")),
+    }
+}
+
+async fn put_memos(State(s): S, UrlPath(doc): UrlPath<String>, body: Bytes) -> Response {
+    let Some(path) = blob_path(&s.memo_dir, &[&doc], "json") else { return StatusCode::NOT_FOUND.into_response() };
+    if body.len() > MEMO_FILE_LIMIT {
+        return text_error(413, "메모가 너무 많아 저장하지 못했어요.".into());
+    }
+    let Ok(value) = serde_json::from_slice::<Value>(&body) else { return text_error(400, "메모 형식이 올바르지 않아요.".into()) };
+    let empty = value["memos"].as_array().is_some_and(Vec::is_empty);
+    let result = if empty {
+        match fs::remove_file(&path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        }
+    } else {
+        fs::create_dir_all(&s.memo_dir).and_then(|()| store::write_atomic(&path, &body))
+    };
+    match result {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => text_error(500, format!("메모를 저장하지 못했어요: {e}")),
+    }
+}
+
 // ---------- library ----------
 
 async fn library_list(State(s): S) -> Json<Value> {
@@ -445,6 +483,7 @@ async fn library_patch(State(s): S, UrlPath(id): UrlPath<String>, Json(patch): J
 async fn library_delete(State(s): S, UrlPath(id): UrlPath<String>) -> StatusCode {
     if s.library.remove(&id) {
         let _ = fs::remove_file(s.thumb_dir.join(format!("{id}.jpg")));
+        let _ = fs::remove_file(s.memo_dir.join(format!("{id}.json")));
         StatusCode::NO_CONTENT
     } else {
         StatusCode::NOT_FOUND
@@ -609,6 +648,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/detect", post(detect))
         .route("/api/boxes/:doc/:page", get(get_boxes).put(put_boxes))
         .route("/api/thumbs/:id", get(get_thumb).put(put_thumb))
+        .route("/api/memos/:doc", get(get_memos).put(put_memos))
         .route("/api/library", get(library_list).post(library_add))
         .route("/api/library/:id", axum::routing::patch(library_patch).delete(library_delete))
         .route("/files/:name", get(pdf_file))
