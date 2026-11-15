@@ -46,6 +46,7 @@ function formatBytes(n = 0) {
   } while (v >= 1024 && i < units.length - 1);
   return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
 }
+const IS_MAC = /Mac/.test(navigator.platform);
 const PREFS_KEY = 'sunlightPrefs';
 function loadPrefs() {
   let p = {};
@@ -185,11 +186,17 @@ function Library({ onOpen, onNavigate }) {
   async function upload(files) {
     setError('');
     let last;
+    const failed = [];
     for (const f of files) {
-      const res = await fetch('/api/library', { method: 'POST', headers: { 'X-Filename': encodeURIComponent(f.name) }, body: f });
-      if (!res.ok) setError(`${f.name}: PDF 파일만 올릴 수 있어요.`);
-      else last = await res.json();
+      try {
+        const res = await fetch('/api/library', { method: 'POST', headers: { 'X-Filename': encodeURIComponent(f.name) }, body: f });
+        if (res.ok) last = await res.json();
+        else failed.push(res.status === 400 ? `${f.name}: PDF 파일만 올릴 수 있어요.` : `${f.name}: 저장하지 못했어요. 디스크 공간을 확인해주세요.`);
+      } catch {
+        failed.push(`${f.name}: 올리지 못했어요. 앱을 다시 시작해보세요.`);
+      }
     }
+    setError(failed.join(' '));
     await reload();
     if (files.length === 1 && last) onOpen(last);
   }
@@ -234,6 +241,8 @@ function Library({ onOpen, onNavigate }) {
         </div>
         {docs.length === 0 ? (
           <p className="body muted center">PDF를 이 창에 끌어다 놓거나 “PDF 업로드”를 눌러 시작하세요.</p>
+        ) : shown.length === 0 ? (
+          <p className="body muted center">“{query}”에 맞는 논문이 없어요.</p>
         ) : (
           <div className="card-grid">
             {shown.map((d) => (
@@ -278,14 +287,24 @@ function Translations({ setToast }) {
 
   const remove = async (f) => {
     if (!(await askConfirm(`“${f.name}”을 삭제할까요? (${formatBytes(f.bytes)})`))) return;
-    await api(`/exports/${encodeURIComponent(f.name)}`, { method: 'DELETE' });
-    setToast({ text: `${formatBytes(f.bytes)}를 비웠어요.` });
+    try {
+      await api(`/exports/${encodeURIComponent(f.name)}`, { method: 'DELETE' });
+      setToast({ text: `${formatBytes(f.bytes)}를 비웠어요.` });
+    } catch {
+      setToast({ text: `“${f.name}”을 삭제하지 못했어요. 이미 지워졌거나 다른 앱에서 열려 있어요.` });
+    }
     reload();
   };
+  const open = (f) =>
+    api(`/exports/${encodeURIComponent(f.name)}/open`, { method: 'POST' }).catch(() => {
+      setToast({ text: `“${f.name}”을 찾을 수 없어요. 폴더에서 옮기거나 지운 파일이에요.` });
+      reload();
+    });
   const removeAll = async () => {
     if (!data.files.length || !(await askConfirm(`번역본 ${data.files.length}개를 모두 삭제할까요? (${formatBytes(storage?.exportsBytes)})`))) return;
-    for (const f of data.files) await api(`/exports/${encodeURIComponent(f.name)}`, { method: 'DELETE' });
-    setToast({ text: '번역본을 모두 삭제했어요.' });
+    let failed = 0;
+    for (const f of data.files) await api(`/exports/${encodeURIComponent(f.name)}`, { method: 'DELETE' }).catch(() => failed++);
+    setToast({ text: failed ? `번역본 ${failed}개는 삭제하지 못했어요. 다른 앱에서 열려 있는지 확인해주세요.` : '번역본을 모두 삭제했어요.' });
     reload();
   };
   const clearCache = async () => {
@@ -301,7 +320,7 @@ function Translations({ setToast }) {
         <span className="tagline">번역본</span>
         <div className="sub-nav-actions">
           <button className="text-link utility" onClick={() => api('/exports/reveal', { method: 'POST' })}>
-            Finder에서 열기
+            {IS_MAC ? 'Finder에서 열기' : '폴더 열기'}
           </button>
           <button className="pill secondary small" onClick={removeAll} disabled={!data.files.length}>
             모두 삭제
@@ -345,7 +364,7 @@ function Translations({ setToast }) {
                     {formatBytes(f.bytes)} · {formatDate(f.modifiedAt)}
                   </span>
                 </div>
-                <button className="text-link" onClick={() => api(`/exports/${encodeURIComponent(f.name)}/open`, { method: 'POST' })}>
+                <button className="text-link" onClick={() => open(f)}>
                   열기
                 </button>
                 <button className="text-link" onClick={() => remove(f)}>
@@ -433,7 +452,10 @@ function EngineTab({ settings, update, goKeys }) {
         rest = lines.pop();
         for (const line of lines.filter(Boolean)) {
           const m = JSON.parse(line);
-          if (m.error) return setPull({ model, status: m.error, error: true });
+          if (m.error) {
+            const missing = /manifest|not found|does not exist/i.test(m.error);
+            return setPull({ model, status: missing ? '이 이름의 모델을 찾을 수 없어요. ollama.com/library에서 정확한 이름을 확인해주세요.' : m.error, error: true });
+          }
           setPull({ model, status: m.status, pct: m.total ? Math.round((100 * (m.completed ?? 0)) / m.total) : undefined });
         }
       }
@@ -495,7 +517,13 @@ function EngineTab({ settings, update, goKeys }) {
         <>
           <h3 className="body-strong">Ollama</h3>
           <p className={`caption ${models?.running === false ? 'error' : 'muted'}`}>
-            {!models ? '확인 중…' : models.running ? `실행 중 · ${settings.local.baseUrl}` : 'Ollama가 실행 중이 아니에요. Ollama 앱을 켠 뒤 새로고침하세요.'}
+            {!models ? '확인 중…' : models.running ? `실행 중 · ${settings.local.baseUrl}` : 'Ollama가 실행 중이 아니에요. Ollama 앱을 켠 뒤 새로고침하세요. 아직 설치하지 않았다면 '}
+            {models?.running === false && (
+              <a className="text-link caption" href="https://ollama.com/download" target="_blank" rel="noreferrer">
+                ollama.com/download
+              </a>
+            )}
+            {models?.running === false && '에서 받을 수 있어요.'}
             {models?.running === false && (
               <button className="text-link caption" onClick={reloadModels}>
                 {' '}
@@ -578,7 +606,11 @@ function KeyRow({ provider, state, update }) {
           className="pill primary small"
           disabled={!value.trim()}
           onClick={async () => {
-            await update({ key: { provider: provider.id, value } });
+            try {
+              await update({ key: { provider: provider.id, value: value.trim() } });
+            } catch (err) {
+              return setCheck({ ok: false, text: `키를 저장하지 못했어요: ${err.message}` });
+            }
             setValue('');
             verify();
           }}
@@ -610,7 +642,7 @@ function KeysTab({ settings, update }) {
   return (
     <div className="settings-section">
       <h3 className="body-strong">API 키</h3>
-      <p className="caption muted">키는 macOS 키체인으로 암호화해 이 Mac에만 저장하며, 화면에는 끝 4자리만 표시합니다. 키를 저장하면 번역 엔진에서 해당 모델을 고를 수 있습니다.</p>
+      <p className="caption muted">키는 {IS_MAC ? 'macOS 키체인' : 'Windows 자격 증명 관리자'}에 암호화해 이 컴퓨터에만 저장하며, 화면에는 끝 4자리만 표시합니다. 키를 저장하면 번역 엔진에서 해당 모델을 고를 수 있습니다.</p>
       <ul className="key-list">
         {PROVIDERS.filter((p) => p.keyed).map((p) => (
           <KeyRow key={p.id} provider={p} state={settings.keys[p.id]} update={update} />
@@ -671,7 +703,7 @@ function TranslationProgress({ progress }) {
   );
 }
 
-function Reader({ doc, settings, language, setLanguage, setToast, openSettings }) {
+function Reader({ doc, settings, language, setLanguage, setToast, openSettings, onClose }) {
   const mainRef = useRef(null);
   const viewerRef = useRef(null);
   const readerRef = useRef(null);
@@ -688,12 +720,31 @@ function Reader({ doc, settings, language, setLanguage, setToast, openSettings }
     let cancelled = false;
     let reader;
     api(`/library/${doc.id}`, json('PATCH', { lastOpenedAt: Date.now() })).catch(() => {});
-    openReader({ mainContainer: mainRef.current, viewerContainer: viewerRef.current, doc, language, initialPage: pageRef.current, onState: setState }).then(
+    // One notice per distinct cause (missing key, Ollama off, model not installed), not one per failed page.
+    let lastFailure = '';
+    const onTranslationFailure = (message) => {
+      if (cancelled || !message || message === lastFailure || /^translation \d+$|stream ended early|Failed to fetch|Load failed/.test(message)) return;
+      lastFailure = message;
+      setToast({ text: message, action: { label: '설정 열기', run: openSettings } });
+    };
+    openReader({ mainContainer: mainRef.current, viewerContainer: viewerRef.current, doc, language, initialPage: pageRef.current, onState: setState, onTranslationFailure }).then(
       (r) => {
         if (cancelled) return r.destroy();
         reader = readerRef.current = r;
       },
-      (err) => !cancelled && setToast({ text: `PDF를 열지 못했어요: ${err?.message ?? err}` }),
+      (err) => {
+        if (cancelled) return;
+        const reason =
+          err?.name === 'PasswordException'
+            ? '암호가 걸린 PDF는 열 수 없어요. 암호를 푼 파일을 올려주세요.'
+            : err?.name === 'InvalidPDFException'
+              ? '파일이 손상됐거나 PDF가 아니에요.'
+              : err?.name === 'MissingPDFException' || err?.status === 404
+                ? '원본 파일을 찾을 수 없어요. 라이브러리에서 삭제한 뒤 다시 올려주세요.'
+                : `PDF를 열지 못했어요: ${err?.message ?? err}`;
+        setToast({ text: reason });
+        onClose();
+      },
     );
     return () => {
       cancelled = true;
@@ -707,9 +758,12 @@ function Reader({ doc, settings, language, setLanguage, setToast, openSettings }
   async function exportPdf() {
     const r = readerRef.current;
     if (!r || exporting) return;
+    const failedNow = state.progress?.failed ?? 0;
+    if (failedNow && !(await askConfirm(`${failedNow}쪽은 번역하지 못했어요. 그래도 저장할까요? 번역하지 못한 쪽은 원문 그대로 저장됩니다.`))) return;
     try {
       const saved = await r.exportPdf(({ completed, total }) => setExporting(`${completed}/${total}`));
-      const failed = saved.failedPageIndices.length ? ` · 번역 실패 ${saved.failedPageIndices.map((i) => i + 1).join(', ')}쪽` : '';
+      const pages = saved.failedPageIndices.map((i) => i + 1);
+      const failed = pages.length === 0 ? '' : pages.length > 5 ? ` · ${pages.length}쪽은 원문 그대로` : ` · ${pages.join(', ')}쪽은 원문 그대로`;
       setToast({ text: `번역본을 저장했어요 · ${formatBytes(saved.bytes)}${failed}`, action: { label: '열기', run: () => api(`/exports/${encodeURIComponent(saved.name)}/open`, { method: 'POST' }) } });
     } catch (err) {
       setToast({ text: err.message });
@@ -726,7 +780,7 @@ function Reader({ doc, settings, language, setLanguage, setToast, openSettings }
           {doc.title}
         </span>
         <div className="sub-nav-actions">
-          <div className="segmented" title="확대/축소 · 트랙패드 핀치, ⌘+ / ⌘− / ⌘0">
+          <div className="segmented" title={IS_MAC ? '확대/축소 · 트랙패드 핀치, ⌘+ / ⌘− / ⌘0' : '확대/축소 · Ctrl+휠, Ctrl + / Ctrl − / Ctrl 0'}>
             <button onClick={() => readerRef.current?.zoom(-1)} aria-label="축소">
               −
             </button>
@@ -746,7 +800,12 @@ function Reader({ doc, settings, language, setLanguage, setToast, openSettings }
             className="segmented page-box"
             onSubmit={(e) => {
               e.preventDefault();
-              readerRef.current?.goToPage(Number(pageInput));
+              const n = Math.round(Number(pageInput));
+              if (n >= 1 && n <= state.pages) readerRef.current?.goToPage(n);
+              else {
+                setPageInput(String(state.page));
+                setToast({ text: `1부터 ${state.pages} 사이의 쪽 번호를 입력해주세요.` });
+              }
             }}
           >
             <input value={pageInput} onChange={(e) => setPageInput(e.target.value)} inputMode="numeric" aria-label="페이지" />
@@ -842,6 +901,7 @@ function App() {
           setLanguage={(language) => setPrefs({ language })}
           setToast={setToast}
           openSettings={() => openSettings('engine')}
+          onClose={() => setDoc(null)}
         />
       ) : page === 'translations' ? (
         <Translations setToast={setToast} />

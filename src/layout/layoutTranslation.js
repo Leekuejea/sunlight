@@ -197,7 +197,7 @@ function linkifySentence(span, links, linkService) {
 }
 
 export function createLayoutTranslation(ctx) {
-  const { pdfjsViewer, pdfDocument, source, mainContainer, pageBoxes, requestTranslation, getLanguage, onStateChange, onProgress } = ctx;
+  const { pdfjsViewer, pdfDocument, source, mainContainer, pageBoxes, requestTranslation, getLanguage, onStateChange, onProgress, onFailure } = ctx;
   const pages = new Map(); // pageIndex -> state
   const loading = new Map(); // pageIndex -> Promise<state>
   const queue = [];
@@ -371,6 +371,7 @@ export function createLayoutTranslation(ctx) {
           state.quietRetry = false;
           state.failureIsTransient = retryable;
           state.errorMessage = err.message;
+          onFailure?.(err.message);
           state.resolveSettled();
           console.error('Browser layout translation failed', err);
         })

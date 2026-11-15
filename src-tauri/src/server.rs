@@ -507,6 +507,7 @@ async fn exports_add(State(s): S, Query(q): Query<HashMap<String, String>>, body
 }
 
 async fn exports_reveal(State(s): S) -> StatusCode {
+    let _ = fs::create_dir_all(&s.exports_dir); // the folder appears with the first export
     let _ = open::that_detached(&s.exports_dir);
     StatusCode::NO_CONTENT
 }

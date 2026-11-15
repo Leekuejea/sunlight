@@ -39,6 +39,8 @@ fn main() {
                 .title("Sunlight")
                 .inner_size(1440.0, 920.0)
                 .min_inner_size(760.0, 520.0)
+                // Tauri's native file-drop handler swallows HTML5 drops on Windows; the page handles drops itself.
+                .disable_drag_drop_handler()
                 // Anything outside the app (links in PDFs) opens in the default browser.
                 .on_navigation(move |url| {
                     let own = url.host_str() == Some("127.0.0.1") && url.port() == Some(port);
