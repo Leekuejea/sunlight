@@ -1,12 +1,16 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import 'katex/dist/katex.min.css';
 import './layout/layout.css';
 import './app.css';
-import { openReader, renderThumbnail } from './reader.js';
+import { openReader, paperPages, renderThumbnail } from './reader.js';
+import { knownTopics, layoutGraph, paperText } from './graph/paperGraph.js';
+import { createGraphView } from './graph/graphView.js';
 import { L10N } from './layout/layoutTranslation.js';
 
+// Set on <html> by the app's server in the iOS and Android builds: no Ollama, no in-app update, no folder to reveal.
+const MOBILE = document.documentElement.classList.contains('mobile');
 const LANGUAGES = { ko: '한국어', en: 'English' };
 // Picked by measurement on a 16GB M2 Pro (see README): speed and Korean quality together.
 const RECOMMENDED_LOCAL = [
@@ -19,7 +23,7 @@ const PROVIDERS = [
   { id: 'openai', name: 'GPT', sub: 'OpenAI', keyed: true, keyUrl: 'https://platform.openai.com/api-keys' },
   { id: 'anthropic', name: 'Claude', sub: 'Anthropic', keyed: true, keyUrl: 'https://console.anthropic.com/settings/keys' },
   { id: 'gemini', name: 'Gemini', sub: 'Google AI Studio', keyed: true, keyUrl: 'https://aistudio.google.com/apikey' },
-];
+].filter((p) => p.keyed || !MOBILE);
 
 // Errors carry the server's message (JSON `error` or plain text); App shows any that go unhandled as a toast.
 async function api(path, init) {
@@ -107,9 +111,10 @@ function ConfirmHost() {
 }
 
 // Downloads and installs the new version, then the app restarts itself. onStatus gets readable progress text.
-async function installUpdate(onStatus) {
+// With `prefetch` it only downloads; the app installs it when it quits, and the last status is { ready, version }.
+async function installUpdate(onStatus, { prefetch = false } = {}) {
   try {
-    const res = await fetch('/api/update/install', { method: 'POST' });
+    const res = await fetch(prefetch ? '/api/update/prefetch' : '/api/update/install', { method: 'POST' });
     const ndjson = (res.headers.get('content-type') ?? '').includes('ndjson');
     if (!ndjson) return onStatus({ error: (await res.json().catch(() => ({})))?.error ?? '업데이트를 시작하지 못했어요.' });
     const reader = res.body.getReader();
@@ -124,12 +129,13 @@ async function installUpdate(onStatus) {
       for (const line of lines.filter(Boolean)) {
         const m = JSON.parse(line);
         if (m.error) return onStatus({ error: m.error });
+        if (m.ready || m.none) return onStatus(m);
         onStatus({ text: m.pct != null ? `${m.status} ${m.pct}%` : m.status, done: m.done });
       }
     }
   } catch {
     // The connection drops when the app restarts into the new version (or the Windows installer closes it).
-    onStatus({ text: '다시 시작하는 중', done: true });
+    if (!prefetch) onStatus({ text: '다시 시작하는 중', done: true });
   }
 }
 
@@ -148,7 +154,7 @@ function UpdateRow() {
     <>
       {state?.ok && state.available && (
         <button className="pill primary small" onClick={install}>
-          {state.version}으로 업데이트
+          {state.ready ? `다시 시작해서 ${state.version} 적용` : `${state.version}으로 업데이트`}
         </button>
       )}
       {state?.ok && !state.available && <span className="caption muted">최신 버전이에요.</span>}
@@ -175,6 +181,7 @@ function SunMark({ size = 18 }) {
 
 function GlobalNav({ page, onNavigate, onSettings }) {
   const links = [
+    ['graph', '그래프'],
     ['library', '라이브러리'],
     ['translations', '번역본'],
   ];
@@ -301,7 +308,7 @@ function Library({ onOpen, onNavigate }) {
           <input className="search-input" placeholder="라이브러리 검색" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         {docs.length === 0 ? (
-          <p className="body muted center">PDF를 이 창에 끌어다 놓거나 “PDF 업로드”를 눌러 시작하세요.</p>
+          <p className="body muted center">{MOBILE ? '“PDF 업로드”를 눌러 시작하세요.' : 'PDF를 이 창에 끌어다 놓거나 “PDF 업로드”를 눌러 시작하세요.'}</p>
         ) : shown.length === 0 ? (
           <p className="body muted center">“{query}”에 맞는 논문이 없어요.</p>
         ) : (
@@ -329,13 +336,263 @@ function Library({ onOpen, onNavigate }) {
       <section className="tile tile-dark center">
         <p className="tagline muted-dark">번역본 저장 공간</p>
         <h2 className="display-lg">{storage ? formatBytes(storage.exportsBytes) : '—'}</h2>
-        <p className="body muted-dark">{storage ? `번역본 ${storage.files ?? 0}개 · 문서/Sunlight/Translations` : ''}</p>
+        <p className="body muted-dark">{storage ? `번역본 ${storage.files ?? 0}개${MOBILE ? '' : ' · 문서/Sunlight/Translations'}` : ''}</p>
         <div className="cta-row">
           <button className="pill primary" onClick={() => onNavigate('translations')}>
             번역본 관리
           </button>
         </div>
       </section>
+    </main>
+  );
+}
+
+// Paper graph: every library paper and its topics, grouped into communities (see src/graph/paperGraph.js).
+// Analysing a paper costs a model call, so it only runs when the reader asks; results are cached per paper.
+function Graph({ onOpen, setToast, language, engine, openSettings }) {
+  const [data, setData] = useState(null);
+  const [run, setRun] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [query, setQuery] = useState('');
+  const [hidden, setHidden] = useState(() => new Set());
+  const canvas = useRef(null);
+  const view = useRef(null);
+  const stop = useRef(null);
+  const load = () =>
+    api('/graph')
+      .then(setData)
+      .catch((e) => setToast({ text: e.message }));
+  useEffect(() => {
+    load();
+    return () => stop.current?.abort();
+  }, []);
+
+  const graph = useMemo(() => (data ? layoutGraph(data.docs, data.papers) : null), [data]);
+  const byId = useMemo(() => new Map((graph?.nodes ?? []).map((n) => [n.id, n])), [graph]);
+  const missing = data ? data.docs.filter((d) => !data.papers[d.id]) : [];
+  useEffect(() => {
+    setHidden(new Set());
+    setSelected((id) => (byId.has(id) ? id : null));
+    if (!graph?.nodes.length) return;
+    let live = true;
+    let made;
+    createGraphView(canvas.current, graph, {
+      onSelect: setSelected,
+      onOpen: (id) => {
+        const doc = data.docs.find((d) => d.id === id);
+        if (doc) onOpen(doc);
+      },
+    })
+      .then((v) => {
+        made = v;
+        if (live) view.current = v;
+        else v.destroy();
+      })
+      .catch(() => setToast({ text: '그래프를 그리지 못했어요. 앱을 다시 시작해보세요.' }));
+    return () => {
+      live = false;
+      made?.destroy();
+      view.current = null;
+    };
+  }, [graph]);
+
+  async function analyse(docs, papersSoFar = data.papers) {
+    const ctrl = new AbortController();
+    stop.current = ctrl;
+    const done = { ...papersSoFar };
+    const failed = [];
+    let streak = 0;
+    for (const [i, doc] of docs.entries()) {
+      setRun({ done: i, total: docs.length, title: doc.title });
+      try {
+        let text;
+        try {
+          const { pages, numPages } = await paperPages(`/files/${doc.id}.pdf`);
+          text = paperText(pages, numPages);
+        } catch {
+          throw new Error('PDF를 읽지 못했어요.');
+        }
+        const res = await api(`/graph/${doc.id}`, { ...json('POST', { ...text, target: language, known: knownTopics(done) }), signal: ctrl.signal });
+        if (!res?.ok) throw new Error(res?.error || '주제를 찾지 못했어요.');
+        streak = 0;
+        done[doc.id] = res.paper;
+        setData((d) => ({ ...d, papers: { ...d.papers, [doc.id]: res.paper } }));
+      } catch (e) {
+        if (ctrl.signal.aborted) break;
+        failed.push({ title: doc.title, error: e.message });
+        // Two failures in a row are almost always the engine (no key, Ollama off), not the papers.
+        if (++streak >= 2 && i < docs.length - 1) {
+          failed.push(...docs.slice(i + 1).map((d) => ({ title: d.title, skipped: true })));
+          break;
+        }
+      }
+    }
+    if (stop.current === ctrl) stop.current = null;
+    setRun(null);
+    if (ctrl.signal.aborted || !failed.length) return;
+    const first = failed.find((f) => f.error);
+    setToast({
+      text: failed.length === 1 ? `“${first.title}”의 주제를 찾지 못했어요. ${first.error}` : `논문 ${failed.length}편을 분석하지 못했어요. ${first.error}`,
+      action: { label: '설정 열기', run: openSettings },
+    });
+  }
+
+  const restart = async () => {
+    if (!(await askConfirm('모든 논문의 주제를 처음부터 다시 찾을까요? 지금 엔진으로 논문마다 한 번씩 요청해요.'))) return;
+    await api('/graph', { method: 'DELETE' });
+    const fresh = await api('/graph');
+    setData(fresh);
+    analyse(fresh.docs, {});
+  };
+  const focus = (id) => {
+    setSelected(id);
+    view.current?.focus(id);
+  };
+  const toggle = (cid) =>
+    setHidden((h) => {
+      const next = new Set(h);
+      next.has(cid) ? next.delete(cid) : next.add(cid);
+      view.current?.setHidden(next);
+      return next;
+    });
+  const toggleAll = () => {
+    const next = hidden.size ? new Set() : new Set(graph.communities.map((c) => c.cid));
+    view.current?.setHidden(next);
+    setHidden(next);
+  };
+
+  const node = byId.get(selected);
+  const linked = (kind) => (node ? graph.edges.filter((e) => (e.from === node.id || e.to === node.id) && (kind === 'topic' ? e.relation === 'covers' : e.relation === 'cites')) : []);
+  const matches = query.trim() ? (graph?.nodes ?? []).filter((n) => n.label.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 20) : [];
+  const papers = graph ? graph.nodes.filter((n) => n.kind === 'paper').length : 0;
+  const community = node && graph.communities[node.community];
+
+  return (
+    <main className="page graph-page">
+      <header className="sub-nav">
+        <span className="tagline">그래프</span>
+        <div className="sub-nav-actions">
+          {run ? (
+            <>
+              <div className="progress-pill" title={run.title}>
+                <span className="caption">
+                  주제 찾는 중 {run.done}/{run.total}편
+                </span>
+                <progress max={run.total} value={run.done} />
+              </div>
+              <button className="pill secondary small" onClick={() => stop.current?.abort()}>
+                중지
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="caption muted engine text-button" onClick={openSettings} title="분석에 쓰는 엔진 (설정에서 바꾸기)">
+                {engine}
+              </button>
+              {papers > 0 && (
+                <button className="pill secondary small" onClick={restart}>
+                  다시 분석
+                </button>
+              )}
+              {missing.length > 0 && (
+                <button className="pill primary small" onClick={() => analyse(missing)}>
+                  주제 찾기 · {missing.length}편
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </header>
+      {!data ? null : data.docs.length === 0 ? (
+        <section className="tile tile-parchment center graph-empty">
+          <p className="body muted">라이브러리에 논문을 추가하면, 주제와 인용으로 이어진 그래프가 여기에 그려져요.</p>
+        </section>
+      ) : papers === 0 ? (
+        <section className="tile tile-parchment center graph-empty">
+          <h2 className="display-md">논문 {data.docs.length}편을 주제로 엮어볼까요?</h2>
+          <p className="body muted">“주제 찾기”를 누르면 지금 엔진({engine})이 논문마다 앞부분을 한 번 읽고 주제를 찾아요. 결과는 저장되어 다음부터는 바로 열려요.</p>
+        </section>
+      ) : (
+        <div className="graph-body">
+          <div className="graph-canvas" ref={canvas} />
+          <aside className="graph-sidebar">
+            <div className="graph-search">
+              <input className="search-input" placeholder="그래프에서 찾기" value={query} onChange={(e) => setQuery(e.target.value)} />
+              {matches.length > 0 && (
+                <div className="graph-results">
+                  {matches.map((n) => (
+                    <button key={n.id} style={{ borderLeftColor: n.color }} onClick={() => (focus(n.id), setQuery(''))}>
+                      {n.kind === 'paper' ? '▪ ' : ''}
+                      {n.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <section className="graph-info">
+              {!node ? (
+                <p className="caption muted">점(주제)이나 네모(논문)를 누르면 자세히 보여요. 논문을 두 번 누르면 바로 열려요.</p>
+              ) : node.kind === 'paper' ? (
+                <>
+                  <h3 className="body-strong">{node.label}</h3>
+                  {node.fileTitle !== node.label && <p className="caption muted">{node.fileTitle}</p>}
+                  {node.summary && <p className="caption">{node.summary}</p>}
+                  <p className="caption muted">묶음 · {community?.label}</p>
+                  <div className="graph-chips">
+                    {linked('topic').map((e) => (
+                      <button key={e.to} className="graph-chip" onClick={() => focus(e.to)}>
+                        {byId.get(e.to)?.label}
+                      </button>
+                    ))}
+                  </div>
+                  {linked('cites').map((e) => {
+                    const other = byId.get(e.from === node.id ? e.to : e.from);
+                    return (
+                      <button key={`${e.from}>${e.to}`} className="graph-link caption" onClick={() => focus(other.id)}>
+                        {e.from === node.id ? '인용함 → ' : '인용됨 ← '}
+                        {other.label}
+                      </button>
+                    );
+                  })}
+                  <button className="pill primary small" onClick={() => onOpen(data.docs.find((d) => d.id === node.docId))}>
+                    논문 열기
+                  </button>
+                </>
+              ) : (
+                <>
+                  <h3 className="body-strong">{node.label}</h3>
+                  <p className="caption muted">
+                    논문 {node.degree}편 · 묶음 · {community?.label}
+                  </p>
+                  {linked('topic').map((e) => (
+                    <button key={e.from} className="graph-link caption" onClick={() => focus(e.from)}>
+                      {byId.get(e.from)?.label}
+                    </button>
+                  ))}
+                </>
+              )}
+            </section>
+            <section className="graph-legend">
+              <label className="caption muted">
+                <input type="checkbox" checked={hidden.size === 0} ref={(el) => el && (el.indeterminate = hidden.size > 0 && hidden.size < graph.communities.length)} onChange={toggleAll} />
+                묶음 {graph.communities.length}개
+              </label>
+              {graph.communities.map((c) => (
+                <label key={c.cid} className={`caption ${hidden.has(c.cid) ? 'dimmed' : ''}`} title={c.label}>
+                  <input type="checkbox" checked={!hidden.has(c.cid)} onChange={() => toggle(c.cid)} />
+                  <span className="graph-dot" style={{ background: c.color }} />
+                  <span className="graph-legend-label">{c.label}</span>
+                  <span className="muted">{c.papers ? `${c.papers}편` : c.count}</span>
+                </label>
+              ))}
+            </section>
+            <p className="caption muted graph-stats">
+              논문 {papers}편 · 주제 {graph.nodes.length - papers}개 · 인용 {graph.edges.filter((e) => e.relation === 'cites').length}개
+              {missing.length > 0 && ` · 미분석 ${missing.length}편`}
+            </p>
+          </aside>
+        </div>
+      )}
     </main>
   );
 }
@@ -380,9 +637,11 @@ function Translations({ setToast }) {
       <header className="sub-nav">
         <span className="tagline">번역본</span>
         <div className="sub-nav-actions">
-          <button className="text-link utility" onClick={() => api('/exports/reveal', { method: 'POST' })}>
-            {IS_MAC ? 'Finder에서 열기' : '폴더 열기'}
-          </button>
+          {!MOBILE && (
+            <button className="text-link utility" onClick={() => api('/exports/reveal', { method: 'POST' })}>
+              {IS_MAC ? 'Finder에서 열기' : '폴더 열기'}
+            </button>
+          )}
           <button className="pill secondary small" onClick={removeAll} disabled={!data.files.length}>
             모두 삭제
           </button>
@@ -488,7 +747,7 @@ function GeneralTab({ prefs, setPrefs, version }) {
       <p className="caption muted">영어 논문은 한국어로, 한국어 논문은 영어로 번역합니다.</p>
       <h3 className="body-strong">버전</h3>
       <p className="caption muted inline">
-        Sunlight {version ?? '—'} <UpdateRow />
+        Sunlight {version ?? '—'} {!MOBILE && <UpdateRow />}
       </p>
     </div>
   );
@@ -941,26 +1200,28 @@ function App() {
   const [settingsTab, setSettingsTab] = useState(null);
   const [prefs, setPrefs] = usePrefs();
   useEffect(() => void api('/settings').then(setSettings), []);
-  // Once per launch, a few seconds in: offer a newer version without getting in the way.
+  // Once per launch, a few seconds in: download a newer version in the background. It installs when the app
+  // quits; the toast only offers to restart sooner.
   useEffect(() => {
+    if (MOBILE) return; // the App Store and Play Store update the app
     const t = setTimeout(
       () =>
-        api('/update')
-          .then((u) => {
-            if (!u?.ok || !u.available) return;
+        installUpdate(
+          (s) =>
+            s.ready &&
             setToast({
-              text: `새 버전 ${u.version}이 있어요.`,
+              text: `새 버전 ${s.version}을 받아뒀어요. 앱을 닫으면 적용돼요.`,
               action: {
-                label: '업데이트',
+                label: '지금 다시 시작',
                 run: () => {
-                  setToast({ text: '업데이트를 내려받는 중…', sticky: true });
+                  setToast({ text: '업데이트 · 설치하는 중', sticky: true });
                   installUpdate((s) => setToast(s.error ? { text: s.error } : { text: `업데이트 · ${s.text}`, sticky: true }));
                 },
               },
               sticky: true,
-            });
-          })
-          .catch(() => {}),
+            }),
+          { prefetch: true },
+        ),
       4000,
     );
     return () => clearTimeout(t);
@@ -994,6 +1255,8 @@ function App() {
         />
       ) : page === 'translations' ? (
         <Translations setToast={setToast} />
+      ) : page === 'graph' ? (
+        <Graph onOpen={setDoc} setToast={setToast} language={prefs.language} engine={settings ? engineLabel(settings) : ''} openSettings={() => openSettings('engine')} />
       ) : (
         <Library onOpen={setDoc} onNavigate={navigate} />
       )}

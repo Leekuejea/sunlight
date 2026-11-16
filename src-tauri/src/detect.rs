@@ -20,6 +20,7 @@ pub struct DetectedBox {
 }
 
 pub struct Detector {
+    #[cfg_attr(mobile, allow(dead_code))]
     model: PathBuf,
     session: Mutex<Option<(Environment, Session)>>,
 }
@@ -65,7 +66,11 @@ impl Detector {
                     let coreml = CoreML::default().with_model_format(ModelFormat::MLProgram).with_compute_units(ComputeUnits::All).with_model_cache_dir(cache.display());
                     builder = builder.with_execution_providers([coreml.build()]).map_err(ort::Error::<()>::from)?;
                 }
+                #[cfg(desktop)]
                 let session = builder.commit_from_file(&self.model)?;
+                // Mobile: an Android resource is an entry inside the APK, not a file, so the model is compiled in.
+                #[cfg(mobile)]
+                let session = builder.commit_from_memory(include_bytes!("../resources/doclayout.onnx"))?;
                 Ok((env, session))
             };
             *guard = Some(load().map_err(|e| format!("model: {e}"))?);

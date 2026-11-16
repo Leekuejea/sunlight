@@ -1,0 +1,59 @@
+# iOS and Android builds. Separate from ci.yml / release.yml, which build the desktop app and are unchanged.
+# Trigger: pushes to the mobile branch, or by hand. Store uploads are not automated here: they need the
+# signing material described in the README (Apple distribution certificate, Android upload keystore).
+name: mobile
+on:
+  push:
+    branches: [mobile]
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "ndk;28.2.13676358"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: npm run build # the Rust crate embeds dist/
+      # An unsigned release APK for arm64 phones and tablets: proves the whole Android build, signing aside.
+      - run: npx tauri android build --apk --target aarch64
+        env:
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/28.2.13676358
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sunlight-android-unsigned
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: npm run build
+      # Compiles and links the iOS library. Producing an .ipa needs an Apple signing identity.
+      - run: cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --lib

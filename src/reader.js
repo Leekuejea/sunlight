@@ -26,8 +26,26 @@ export async function renderThumbnail(url, width = 320) {
   }
 }
 
+// Text of the pages the paper graph reads: the opening (title, abstract) and the end (references).
+export async function paperPages(url, { head = 3, tail = 12 } = {}) {
+  const task = pdfjsLib.getDocument({ url, cMapUrl: './pdfjs/cmaps/', cMapPacked: true, standardFontDataUrl: './pdfjs/standard_fonts/' });
+  try {
+    const pdf = await task.promise;
+    const numbers = [...Array(pdf.numPages).keys()].map((i) => i + 1).filter((n) => n <= head || n > pdf.numPages - tail);
+    const pages = [];
+    for (const n of numbers) {
+      const { items } = await (await pdf.getPage(n)).getTextContent();
+      pages.push(items.map((it) => it.str + (it.hasEOL ? '\n' : ' ')).join(''));
+    }
+    return { pages, numPages: pdf.numPages };
+  } finally {
+    task.destroy();
+  }
+}
+
 const NARROW_CLASS = 'moonlight-viewer-tablet-portrait';
 const NARROW_WIDTH = 900;
+const MOBILE = document.documentElement.classList.contains('mobile'); // iOS and Android: translated-only view, API engines only
 
 export async function openReader({ mainContainer, viewerContainer, doc, language, initialPage = 1, onState, onTranslationFailure, onNotice }) {
   const pdfjsViewer = await viewerModule;
@@ -91,6 +109,34 @@ export async function openReader({ mainContainer, viewerContainer, doc, language
   mainContainer.addEventListener('gesturestart', onGestureStart, { signal });
   mainContainer.addEventListener('gesturechange', onGestureChange, { signal });
   mainContainer.addEventListener('gestureend', onGestureEnd, { signal });
+  // Android's WebView has neither gesture events nor ctrl+wheel: a pinch is two plain touches.
+  if (MOBILE && typeof GestureEvent === 'undefined') {
+    let touch = null;
+    const spread = ([a, b]) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    mainContainer.addEventListener(
+      'touchstart',
+      (e) => {
+        if (e.touches.length !== 2) return;
+        const viewer = layout.zoomViewer(!!e.target.closest?.('#browser-layout-translation-panel'));
+        touch = { viewer, scale: viewer.currentScale, start: spread(e.touches), last: 1 };
+      },
+      { passive: true, signal },
+    );
+    mainContainer.addEventListener(
+      'touchmove',
+      (e) => {
+        if (!touch || e.touches.length !== 2) return;
+        e.preventDefault(); // keep the two fingers from also scrolling the page
+        const ratio = spread(e.touches) / touch.start;
+        if (Math.abs(ratio / touch.last - 1) < 0.03) return;
+        touch.last = ratio;
+        const [a, b] = e.touches;
+        touch.viewer.updateScale({ drawingDelay: 400, scaleFactor: (touch.scale * ratio) / touch.viewer.currentScale, origin: [(a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2] });
+      },
+      { passive: false, signal },
+    );
+    ['touchend', 'touchcancel'].forEach((type) => mainContainer.addEventListener(type, (e) => e.touches.length < 2 && (touch = null), { passive: true, signal }));
+  }
   const onKey = (e) => {
     if (!(e.metaKey || e.ctrlKey)) return;
     if (e.key === '=' || e.key === '+') pdfViewer.increaseScale();
@@ -115,7 +161,7 @@ export async function openReader({ mainContainer, viewerContainer, doc, language
   eventBus.on('pagechanging', ({ pageNumber }) => emit({ page: pageNumber }));
   eventBus.on('scalechanging', ({ presetValue, scale }) => emit({ scale: presetValue || String(scale) }));
 
-  const onResize = () => document.documentElement.classList.toggle(NARROW_CLASS, window.innerWidth < NARROW_WIDTH);
+  const onResize = () => document.documentElement.classList.toggle(NARROW_CLASS, MOBILE || window.innerWidth < NARROW_WIDTH);
   onResize();
   window.addEventListener('resize', onResize, { signal });
 
@@ -127,7 +173,7 @@ export async function openReader({ mainContainer, viewerContainer, doc, language
     numPages: pdfDocument.numPages,
     toggleLayout() {
       layout.toggle();
-      if (layout.isActive()) fetch('/api/local/warm', { method: 'POST' }).catch(() => {}); // preload the local model
+      if (layout.isActive() && !MOBILE) fetch('/api/local/warm', { method: 'POST' }).catch(() => {}); // preload the local model
     },
     setScale(v) {
       pdfViewer.currentScaleValue = v;

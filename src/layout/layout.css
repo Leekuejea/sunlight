@@ -580,3 +580,20 @@ a.browser-layout-translation-link:hover {
 :root[data-appearance='dark'] .sunlight-memo-layer {
   mix-blend-mode: screen;
 }
+
+/* iOS and Android phones: the memo pane is a sheet over the bottom of the page instead of a column beside it. */
+@media (max-width: 700px) {
+  :root.mobile.sunlight-memos-open #mainContainer {
+    margin-right: 0;
+  }
+  :root.mobile .sunlight-memo-sidebar {
+    top: auto !important;
+    left: 0;
+    width: 100%;
+    max-height: 45%;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    border-left: 0;
+    border-top: 1px solid rgb(0 0 0 / 0.1);
+    border-radius: 14px 14px 0 0;
+  }
+}

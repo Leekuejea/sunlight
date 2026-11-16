@@ -1,16 +1,19 @@
 [package]
 name = "sunlight"
-version = "1.2.0"
+version = "1.3.0"
 edition = "2021"
 license = "AGPL-3.0-only"
 description = "Layout-preserving translation reader for research papers"
+
+[lib]
+name = "sunlight_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-tauri-plugin-single-instance = "2"
 axum = { version = "0.7", features = ["multipart"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "net"] }
 tokio-stream = "0.1"
@@ -22,15 +25,36 @@ serde_json = "1"
 sha1 = "0.10"
 hex = "0.4"
 regex = "1"
-keyring = { version = "3", features = ["apple-native", "windows-native"] }
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "tls-rustls"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 rust-embed = { version = "8", features = ["include-exclude"] }
 mime_guess = "2"
+percent-encoding = "2"
+
+# Desktop only: the stores update mobile apps, and iOS/Android have no second instance or "open with".
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
 open = "5"
 dirs = "5"
-percent-encoding = "2"
-tauri-plugin-updater = "2"
+
+# The OS keychain. Android has none the keyring crate can reach: store.rs keeps keys in the Android Keystore.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+
+# The share sheet (UIActivityViewController); the versions Tauri already builds.
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+block2 = "0.6"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21" # the version wry hands to `dispatch` closures
+
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+tauri-plugin-opener = "2"
+# A debug build reads dist/ from disk at run time; a phone has no such folder, so mobile always embeds it.
+rust-embed = { version = "8", features = ["include-exclude", "debug-embed"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "tls-rustls", "coreml"] }

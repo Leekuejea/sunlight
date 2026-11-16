@@ -8,7 +8,7 @@
 use crate::{
     detect::Detector,
     harness::{self, Fit, SegmentParser},
-    llm::{self, Engine, LlmError, Provider, HTTP},
+    llm::{self, Engine, LlmError, Provider},
     store::{self, Library, Settings, TranslationCache},
 };
 use axum::{
@@ -32,6 +32,12 @@ use std::{
 };
 use tokio::sync::mpsc;
 
+#[cfg(desktop)]
+use crate::llm::HTTP;
+
+#[cfg(mobile)]
+use crate::mobile::open;
+
 #[derive(rust_embed::RustEmbed)]
 #[folder = "../dist"]
 struct Assets;
@@ -44,6 +50,7 @@ pub struct AppState {
     pub box_dir: PathBuf,
     pub thumb_dir: PathBuf,
     pub memo_dir: PathBuf,
+    pub graph_dir: PathBuf,
     pub exports_dir: PathBuf,
     /// One local generation at a time: the Mac's throughput is fixed, so parallel pages only slow
     /// down the page being read (measured: 2 parallel requests take as long as 2 sequential ones).
@@ -67,6 +74,7 @@ impl AppState {
             box_dir: dir("boxes"),
             thumb_dir: dir("thumbs"),
             memo_dir: dir("memos"),
+            graph_dir: dir("graph"),
             exports_dir,
             local_lock: tokio::sync::Mutex::new(()),
             port,
@@ -80,7 +88,7 @@ fn safe_id(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
-fn text_error(status: u16, message: String) -> Response {
+pub(crate) fn text_error(status: u16, message: String) -> Response {
     (StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY), [(header::CONTENT_TYPE, "text/plain; charset=utf-8")], message).into_response()
 }
 
@@ -342,6 +350,7 @@ async fn models(State(s): S, Query(q): Query<HashMap<String, String>>) -> Respon
 
 // ---------- local LLM (Ollama) ----------
 
+#[cfg(desktop)]
 async fn local_models(State(s): S) -> Json<Value> {
     let res = HTTP.get(format!("{}/api/tags", s.settings.local_url())).timeout(Duration::from_secs(3)).send().await;
     let Ok(body) = (match res {
@@ -355,6 +364,7 @@ async fn local_models(State(s): S) -> Json<Value> {
 }
 
 /// Downloads a model; Ollama's NDJSON progress lines are passed through.
+#[cfg(desktop)]
 async fn local_pull(State(s): S, Json(body): Json<Value>) -> Response {
     let Some(model) = body["model"].as_str() else { return StatusCode::BAD_REQUEST.into_response() };
     match HTTP.post(format!("{}/api/pull", s.settings.local_url())).json(&json!({ "model": model, "stream": true })).send().await {
@@ -363,6 +373,7 @@ async fn local_pull(State(s): S, Json(body): Json<Value>) -> Response {
     }
 }
 
+#[cfg(desktop)]
 /// Loads the local model into memory ahead of the first page (a cold load costs ~12s on a 16GB
 /// M2 Pro). Uses the same context size as real requests, otherwise Ollama would reload the model.
 async fn local_warm(State(s): S) -> StatusCode {
@@ -399,7 +410,7 @@ async fn detect(State(s): S, mut form: Multipart) -> Response {
     }
 }
 
-fn blob_path(dir: &Path, parts: &[&str], ext: &str) -> Option<PathBuf> {
+pub(crate) fn blob_path(dir: &Path, parts: &[&str], ext: &str) -> Option<PathBuf> {
     parts.iter().all(|p| safe_id(p)).then(|| dir.join(format!("{}.{ext}", parts.join("-"))))
 }
 
@@ -491,6 +502,7 @@ async fn library_delete(State(s): S, UrlPath(id): UrlPath<String>) -> StatusCode
     if s.library.remove(&id) {
         let _ = fs::remove_file(s.thumb_dir.join(format!("{id}.jpg")));
         let _ = fs::remove_file(s.memo_dir.join(format!("{id}.json")));
+        crate::graph::remove(&s, &id);
         StatusCode::NO_CONTENT
     } else {
         StatusCode::NOT_FOUND
@@ -552,6 +564,7 @@ async fn exports_add(State(s): S, Query(q): Query<HashMap<String, String>>, body
     }
 }
 
+#[cfg(desktop)]
 async fn exports_reveal(State(s): S) -> StatusCode {
     let _ = fs::create_dir_all(&s.exports_dir); // the folder appears with the first export
     let _ = open::that_detached(&s.exports_dir);
@@ -632,6 +645,10 @@ async fn static_file(req: Request) -> Response {
     let path = percent_encoding::percent_decode_str(if path.is_empty() { "index.html" } else { path }).decode_utf8_lossy().into_owned();
     match Assets::get(&path) {
         Some(file) => {
+            // The page reads this class to drop what a phone or tablet does not have (side-by-side view, Ollama, updates).
+            // The viewport covers the notch area and never zooms as a whole: the reader handles pinch itself.
+            #[cfg(mobile)]
+            let file = if path == "index.html" { rust_embed::EmbeddedFile { data: String::from_utf8_lossy(&file.data).replacen("<html ", "<html class=\"mobile\" ", 1).replacen("initial-scale=1\"", "initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover\"", 1).into_bytes().into(), ..file } } else { file };
             let mime = mime_guess::from_path(&path).first_or_octet_stream();
             let cache = if path.starts_with("assets/") || path.starts_with("pdfjs/") { "public, max-age=31536000, immutable" } else { "no-cache" };
             ([(header::CONTENT_TYPE, mime.as_ref().to_owned()), (header::CACHE_CONTROL, cache.to_owned())], file.data).into_response()
@@ -644,25 +661,31 @@ pub fn router(state: Arc<AppState>) -> Router {
     let router = Router::new();
     #[cfg(debug_assertions)]
     let router = router.route("/api/debug/eval", post(debug_eval)).route("/api/debug/log", post(debug_log));
+    // Desktop only: Ollama, in-app updates and "show in folder".
+    #[cfg(desktop)]
+    let router = router
+        .route("/api/local/models", get(local_models))
+        .route("/api/local/pull", post(local_pull))
+        .route("/api/local/warm", post(local_warm))
+        .route("/api/update", get(crate::update::check))
+        .route("/api/update/install", post(crate::update::install))
+        .route("/api/update/prefetch", post(crate::update::prefetch))
+        .route("/api/exports/reveal", post(exports_reveal));
     router
         .route("/api/ai/translate-page-with-source-v2", post(translate))
         .route("/api/llm/test", post(llm_test))
         .route("/api/settings", get(get_settings).put(put_settings))
         .route("/api/models", get(models))
-        .route("/api/local/models", get(local_models))
-        .route("/api/local/pull", post(local_pull))
-        .route("/api/local/warm", post(local_warm))
         .route("/api/detect", post(detect))
         .route("/api/boxes/:doc/:page", get(get_boxes).put(put_boxes))
         .route("/api/thumbs/:id", get(get_thumb).put(put_thumb))
         .route("/api/memos/:doc", get(get_memos).put(put_memos))
-        .route("/api/update", get(crate::update::check))
-        .route("/api/update/install", post(crate::update::install))
+        .route("/api/graph", get(crate::graph::get_graph).delete(crate::graph::clear_graph))
+        .route("/api/graph/:doc", post(crate::graph::extract))
         .route("/api/library", get(library_list).post(library_add))
         .route("/api/library/:id", axum::routing::patch(library_patch).delete(library_delete))
         .route("/files/:name", get(pdf_file))
         .route("/api/exports", get(exports_list).post(exports_add))
-        .route("/api/exports/reveal", post(exports_reveal))
         .route("/api/exports/:name", delete(export_delete))
         .route("/api/exports/:name/open", post(export_open))
         .route("/api/storage", get(storage))

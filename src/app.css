@@ -701,6 +701,161 @@ progress::-webkit-progress-value {
   height: 3px;
 }
 
+/* ---------- paper graph ---------- */
+.graph-page {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.graph-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+}
+.graph-empty .body {
+  max-width: 640px;
+  margin: 0 auto;
+}
+.graph-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.graph-canvas {
+  flex: 1;
+  min-width: 0;
+  background: var(--parchment);
+}
+.graph-sidebar {
+  flex: none;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 16px;
+  overflow-y: auto;
+  background: var(--canvas);
+  border-left: 1px solid var(--hairline);
+}
+.graph-search {
+  position: relative;
+}
+.graph-search .search-input {
+  width: 100%;
+  height: 36px;
+  padding: 6px 16px;
+  font-size: 14px;
+}
+.graph-results {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  top: 42px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--canvas);
+  box-shadow: var(--product-shadow);
+}
+.graph-results button,
+.graph-link {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  border-left: 3px solid var(--hairline);
+  border-radius: 4px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: 400 13px/1.4 var(--text);
+}
+.graph-results button:hover,
+.graph-link:hover {
+  background: var(--divider-soft);
+}
+.graph-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.graph-info .body-strong {
+  overflow-wrap: anywhere;
+}
+.graph-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.graph-chip {
+  padding: 3px 10px;
+  border-radius: 9999px;
+  background: var(--chip);
+  font: 400 12px/1.4 var(--text);
+}
+.graph-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.graph-legend label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.graph-legend label:hover {
+  background: var(--divider-soft);
+}
+.graph-legend label.dimmed {
+  opacity: 0.4;
+}
+.graph-legend-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.graph-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.graph-stats {
+  margin-top: auto;
+}
+div.vis-tooltip {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--tile-1);
+  color: #fff;
+  font: 400 12px/1.4 var(--text);
+  max-width: 360px;
+  white-space: normal;
+  box-shadow: none;
+}
+@media (max-width: 833px) {
+  .graph-body {
+    flex-direction: column;
+  }
+  .graph-sidebar {
+    width: auto;
+    max-height: 45%;
+    border-left: 0;
+    border-top: 1px solid var(--hairline);
+  }
+}
+
 /* ---------- dark appearance (Apple dark surfaces; links switch to Sky Link Blue) ---------- */
 :root[data-appearance='dark'] {
   color-scheme: dark;
@@ -787,4 +942,120 @@ a.text-link {
 /* macOS: the window's traffic lights overlay the left end of the nav bar. */
 :root.is-mac .global-nav {
   padding-left: 92px;
+}
+
+/* ---------- iOS and Android ----------
+   The app's server sets `mobile` on <html> in those builds; nothing here applies to the desktop app. */
+:root.mobile {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation; /* no double-tap zoom: the reader zooms by pinch */
+}
+:root.mobile body {
+  overscroll-behavior: none;
+}
+:root.mobile .lead {
+  word-break: keep-all; /* Korean wraps between words, not inside one */
+}
+:root.mobile .global-nav {
+  height: calc(44px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
+  gap: 12px;
+}
+:root.mobile .global-links {
+  gap: 0;
+}
+:root.mobile .global-nav button {
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: 14px;
+}
+:root.mobile .sub-nav {
+  padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
+}
+:root.mobile .page {
+  padding-bottom: env(safe-area-inset-bottom);
+  -webkit-overflow-scrolling: touch;
+}
+:root.mobile .toast {
+  margin-bottom: env(safe-area-inset-bottom);
+}
+/* Text fields under 16px make iOS zoom the page on focus. */
+:root.mobile input,
+:root.mobile select,
+:root.mobile textarea {
+  font-size: 16px;
+}
+:root.mobile .segmented,
+:root.mobile .segmented button,
+:root.mobile .segmented select {
+  height: 40px;
+}
+:root.mobile .segmented button {
+  width: 40px;
+}
+:root.mobile .text-link {
+  padding: 8px 0;
+}
+@media (max-width: 700px) {
+  /* Phone: the reader bar wraps to a second row; zoom is by pinch, so the zoom buttons go. */
+  :root.mobile .reader-nav {
+    height: auto;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  :root.mobile .reader-nav .sub-nav-actions {
+    flex: 1;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  :root.mobile .reader-nav .segmented:first-child {
+    display: none;
+  }
+  :root.mobile .tile {
+    padding: 40px 16px;
+  }
+  :root.mobile .card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  :root.mobile .utility-card {
+    padding: 14px;
+  }
+  /* Settings fill the screen, with the tabs across the top. */
+  :root.mobile .modal-backdrop {
+    padding: 0;
+  }
+  :root.mobile .modal:not(.confirm) {
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+  :root.mobile .modal.confirm {
+    margin: 0 16px;
+  }
+  :root.mobile .modal-tabs {
+    width: auto;
+    flex-direction: row;
+    padding: calc(8px + env(safe-area-inset-top)) 56px 8px 12px; /* room for the close button */
+  }
+  :root.mobile .modal-tabs .tagline {
+    display: none;
+  }
+  :root.mobile .modal-tabs button {
+    min-height: 40px;
+  }
+  :root.mobile .modal-body {
+    position: static;
+    padding: 20px 16px calc(32px + env(safe-area-inset-bottom));
+  }
+  :root.mobile .modal-close {
+    top: calc(12px + env(safe-area-inset-top));
+  }
+  :root.mobile .modal:not(.confirm) {
+    position: relative;
+  }
 }

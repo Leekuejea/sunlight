@@ -33,6 +33,67 @@ pub fn dir_bytes(dir: &Path) -> u64 {
 
 // ---------- settings ----------
 
+/// Android has no keychain the `keyring` crate can reach. Same calls as that crate, backed by
+/// `SecretStore.kt`: values are AES-GCM encrypted with a key that never leaves the Android Keystore.
+#[cfg(target_os = "android")]
+mod keyring {
+    use jni::objects::{JObject, JString, JValue};
+    use tauri::wry::prelude::{dispatch, find_class};
+
+    pub struct Entry(String);
+
+    impl Entry {
+        pub fn new(_service: &str, id: &str) -> Result<Self, String> {
+            Ok(Self(id.to_owned()))
+        }
+
+        /// Runs `SecretStore.<method>(activity, id[, value])` on the activity's thread and waits for it.
+        fn call(&self, method: &'static str, value: Option<String>) -> Result<String, String> {
+            let id = self.0.clone();
+            let (tx, rx) = std::sync::mpsc::channel();
+            dispatch(move |env, activity, _webview| {
+                let mut run = || -> jni::errors::Result<String> {
+                    let class = find_class(env, activity, "app/sunlight/reader/SecretStore".into())?;
+                    let id = env.new_string(&id)?;
+                    let context = JValue::Object(activity);
+                    match (method, &value) {
+                        ("get", _) => {
+                            let out = env.call_static_method(&class, "get", "(Landroid/content/Context;Ljava/lang/String;)Ljava/lang/String;", &[context, (&id).into()])?.l()?;
+                            Ok(env.get_string(&JString::from(out))?.into())
+                        }
+                        ("set", Some(value)) => {
+                            let value = env.new_string(value)?;
+                            env.call_static_method(&class, "set", "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)V", &[context, (&id).into(), (&value).into()])?;
+                            Ok(String::new())
+                        }
+                        _ => {
+                            env.call_static_method(&class, "delete", "(Landroid/content/Context;Ljava/lang/String;)V", &[context, (&id).into()])?;
+                            Ok(String::new())
+                        }
+                    }
+                };
+                let result = run();
+                if result.is_err() {
+                    let _ = env.exception_clear(); // a pending Java exception would crash the next JNI call
+                }
+                let _: &JObject = activity;
+                let _ = tx.send(result.map_err(|e| e.to_string()));
+            });
+            rx.recv_timeout(std::time::Duration::from_secs(10)).map_err(|e| e.to_string())?
+        }
+
+        pub fn get_password(&self) -> Result<String, String> {
+            self.call("get", None)
+        }
+        pub fn set_password(&self, value: &str) -> Result<(), String> {
+            self.call("set", Some(value.to_owned())).map(drop)
+        }
+        pub fn delete_credential(&self) -> Result<(), String> {
+            self.call("delete", None).map(drop)
+        }
+    }
+}
+
 const KEYCHAIN_SERVICE: &str = "app.sunlight.reader";
 const DEFAULT_LOCAL_MODEL: &str = "gemma4:e4b"; // measured: fastest with good Korean (README)
 
@@ -76,6 +137,11 @@ impl Settings {
         }
         if data.local_model.is_empty() {
             data.local_model = DEFAULT_LOCAL_MODEL.into();
+        }
+        // Mobile has no Ollama: translation always goes through an API engine.
+        #[cfg(mobile)]
+        if data.provider == "local" {
+            data.provider = Provider::KEYED.iter().map(|p| p.id()).find(|id| data.key_hints.contains_key(*id)).unwrap_or("gemini").into();
         }
         Self { file, data: Mutex::new(data), keys: Mutex::new(HashMap::new()) }
     }
@@ -148,6 +214,7 @@ impl Settings {
         self.data.lock().unwrap().models.get(provider.id()).cloned().unwrap_or_default()
     }
 
+    #[cfg(desktop)]
     pub fn local_url(&self) -> String {
         self.data.lock().unwrap().local_url.clone()
     }

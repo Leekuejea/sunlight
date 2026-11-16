@@ -32,7 +32,7 @@ macOS 13.4 이상, Apple Silicon Mac(M1 이후)이 필요합니다. 내 Mac 종�
 
 ### 업데이트
 
-v1.2.0부터는 앱이 스스로 업데이트합니다. 새 버전이 나오면 앱을 켤 때 “새 버전 x.y.z가 있어요” 알림이 뜨고, **업데이트**를 누르면 내려받아 설치한 뒤 다시 시작합니다. **설정 > 일반 > 버전 > 업데이트 확인**으로 직접 확인할 수도 있습니다.
+앱이 스스로 업데이트합니다. 앱을 켜면 새 버전을 뒤에서 내려받아 두고, **앱을 닫을 때 설치**합니다. 번역이나 분석 중에 끊기지 않고, 다음에 켜면 새 버전입니다. 받아두면 “새 버전 x.y.z를 받아뒀어요” 알림이 뜨며, **지금 다시 시작**을 누르면 바로 적용합니다. **설정 > 일반 > 버전 > 업데이트 확인**으로 직접 확인할 수도 있습니다. (v1.2.0은 알림의 **업데이트**를 눌러야 설치됩니다.)
 - 앱 안에서 받은 업데이트는 macOS의 “열지 않음” 경고가 다시 나오지 않습니다. 브라우저로 받은 파일에만 붙는 다운로드 표시가 없기 때문입니다.
 - 업데이트 파일은 서명을 확인한 뒤에만 설치합니다.
 
@@ -83,6 +83,11 @@ API를 고르면 번역할 문장이 그 서비스로 전송됩니다. 로컬 LL
 11. **번역 캐시**: 한 번 번역한 문장은 저장해 두었다가 다시 열 때 즉시 보여 줍니다. 번역을 처음부터 다시 받고 싶으면 **번역본 보기 > 번역 캐시 > 비우기**를 누릅니다.
 12. **논문 삭제**: 첫 화면 카드의 **라이브러리에서 삭제**를 누릅니다. 이미 저장한 번역본 PDF는 지워지지 않습니다.
 13. **화면 설정**: **설정 > 일반**에서 라이트/다크/시스템 모드, 눈이 편한 “보기 편한 모드”, 기본 번역 언어를 고릅니다.
+14. **그래프**: 위쪽 **그래프** 탭에서 **주제 찾기**를 누르면, 지금 번역 엔진이 논문마다 앞부분을 한 번 읽고 주제를 찾습니다. 같은 주제를 다룬 논문끼리, 그리고 참고문헌에서 서로 인용한 논문끼리 이어져 묶음별 색으로 그려집니다.
+    - 네모는 논문, 점은 주제입니다. 누르면 오른쪽에 요약·주제·인용 관계가 나오고, 논문을 두 번 누르거나 **논문 열기**를 누르면 바로 열립니다.
+    - 오른쪽 위 검색으로 논문이나 주제를 찾고, 묶음 목록의 체크로 묶음을 숨깁니다.
+    - 결과는 저장되어 다음부터 바로 그려집니다. 새로 추가한 논문만 **주제 찾기 · n편**으로 이어서 분석합니다. 더 좋은 모델로 바꿨다면 **다시 분석**을 누릅니다.
+    - API 엔진은 논문마다 한 번 요청하므로 그만큼 사용량이 듭니다.
 
 ## 문제 해결
 
@@ -158,7 +163,7 @@ npm run dist         # src-tauri/target/release/bundle/ 아래 .app, .dmg (Windo
 
 - Windows 설치 파일은 Windows에서 빌드해야 합니다. `.github/workflows/release.yml`이 `v*` 태그를 푸시하면 Mac(Apple Silicon)과 Windows용을 함께 만들어 GitHub 릴리스에 올립니다.
 - `main`에 푸시하면 `.github/workflows/ci.yml`이 빌드와 테스트를 돌립니다.
-- 앱 안 업데이트(`src-tauri/src/update.rs`, `tauri-plugin-updater`)는 릴리스의 `latest.json`을 확인합니다. 업데이트 패키지는 CI가 `TAURI_SIGNING_PRIVATE_KEY`(저장소 Secret)로 서명하고, 앱은 `tauri.conf.json`의 공개 키로 검증합니다. 이 개인 키를 잃으면 기존 설치본에 업데이트를 보낼 수 없으니 따로 백업해 둡니다. 로컬 시험은 `SUNLIGHT_UPDATE_URL`로 다른 `latest.json`을 가리키게 할 수 있습니다(https만 허용).
+- 앱 안 업데이트(`src-tauri/src/update.rs`, `tauri-plugin-updater`)는 릴리스의 `latest.json`을 확인합니다. 앱을 켤 때 `POST /api/update/prefetch`가 패키지를 내려받아 서명까지 확인한 뒤 메모리에 두고, 앱이 끝날 때(`RunEvent::Exit`) 다시 시작 없이 설치합니다. 업데이트 패키지는 CI가 `TAURI_SIGNING_PRIVATE_KEY`(저장소 Secret)로 서명하고, 앱은 `tauri.conf.json`의 공개 키로 검증합니다. 이 개인 키를 잃으면 기존 설치본에 업데이트를 보낼 수 없으니 따로 백업해 둡니다. 로컬 시험은 `SUNLIGHT_UPDATE_URL`로 다른 `latest.json`을 가리키게 할 수 있습니다(https만 허용).
 - Mac 빌드는 ad-hoc 서명입니다. Developer ID 서명과 공증을 하려면 저장소 시크릿에 `APPLE_*` 값을 넣고 `release.yml`의 env에 연결합니다(빈 값을 넘기면 빌드가 실패합니다).
 - 최소 macOS는 13.4입니다(ONNX Runtime 요구 사항).
 - 로컬 번역에는 [Ollama](https://ollama.com)가 설치되어 있어야 합니다.
@@ -176,6 +181,33 @@ API 키는 OS 키체인(macOS 키체인, Windows 자격 증명 관리자)에 저
 | 모델 첫 로드 | 약 12초 → 번역을 켤 때 미리 로드 |
 | 설치 파일 | .dmg 80MB (그중 감지 모델 75MB) |
 
+## 모바일 (iOS, Android)
+
+같은 코드로 Tauri 2 모바일 타깃을 빌드합니다(브랜치 `mobile`). 데스크톱 앱과 다른 점은 세 가지입니다.
+
+- 번역만 보기로 고정합니다(나란히 보기 없음).
+- 번역 엔진은 API만 씁니다(로컬 LLM 없음).
+- 앱 안 업데이트와 “폴더 열기”가 없습니다. 저장한 번역본은 공유 시트로 내보냅니다.
+
+```sh
+rustup target add aarch64-apple-ios aarch64-apple-ios-sim aarch64-linux-android x86_64-linux-android
+npm run build                                   # dist/ (Rust 크레이트가 내장)
+npx tauri ios dev "iPhone 18 Pro"               # 시뮬레이터. 먼저 xcrun simctl boot 로 켜 둡니다
+NDK_HOME=$ANDROID_HOME/ndk/<버전> npx tauri android dev   # 에뮬레이터 또는 연결된 기기
+```
+
+| 부분 | 위치 |
+|---|---|
+| 모바일 시작 코드, 공유 시트, 복귀 시 서버 재시작 | `src-tauri/src/mobile.rs` |
+| Android API 키 저장(Android Keystore AES-GCM), 공유, 시스템 바 여백 | `src-tauri/gen/android/app/src/main/java/app/sunlight/reader/` |
+| iOS 프로젝트 설정(`NSAllowsLocalNetworking`, 파일 앱 공유) | `src-tauri/gen/apple/project.yml` |
+| 화면 분기 | `<html class="mobile">`(모바일 빌드의 서버가 붙임) → `src/app.css`, `src/layout/layout.css`의 `:root.mobile` 규칙, `main.jsx`·`reader.js`의 `MOBILE` |
+
+- 데스크톱 전용 코드는 `#[cfg(desktop)]`, 모바일 전용 코드는 `#[cfg(mobile)]` 뒤에 있습니다. `release.yml`, `ci.yml`, `tauri.conf.json`은 데스크톱용 그대로이고, 모바일은 `tauri.ios.conf.json`, `tauri.android.conf.json`, `.github/workflows/mobile.yml`을 씁니다.
+- 레이아웃 감지 모델은 모바일에서 실행 파일에 포함합니다(Android 리소스는 파일 경로가 없음).
+- iOS는 정지된 앱의 리슨 소켓을 회수할 수 있어, 앱으로 돌아올 때 포트가 응답하지 않으면 서버를 다시 엽니다.
+- 스토어 제출 전에 해결할 것: DocLayout-YOLO 모델의 AGPL-3.0은 App Store 배포 조건과 충돌 소지가 있습니다(Play Store는 해당 없음).
+
 ## 저장 공간
 
 | 항목 | 위치 | 관리 |
@@ -183,6 +215,7 @@ API 키는 OS 키체인(macOS 키체인, Windows 자격 증명 관리자)에 저
 | 번역본 PDF | `~/Documents/Sunlight/Translations/` | 번역본 탭에서 열기, 개별 삭제, 모두 삭제, Finder에서 열기 |
 | 원본 라이브러리 | `~/Library/Application Support/Sunlight/library/` (Windows: `%APPDATA%\Sunlight`) | 라이브러리 카드에서 삭제 |
 | 메모 | 같은 폴더의 `memos/<문서 id>.json` | 자동 저장. 캐시 비우기와 무관, 논문 삭제 시 함께 삭제 |
+| 그래프 분석 | 같은 폴더의 `graph/<문서 id>.json` | 그래프 탭의 “다시 분석”. 논문 삭제 시 함께 삭제 |
 | 번역 캐시, 감지 결과, 썸네일 | 같은 폴더의 `translations.jsonl`, `boxes/`, `thumbs/` | 번역본 탭의 “비우기” |
 
 번역본 PDF 용량은 대부분 원본 PDF 크기에서 옵니다. 원본 위에 번역 블록을 PNG로 덧붙이는 원본 방식을 그대로 따르기 때문입니다(번역 오버레이는 쪽당 약 0.5~1MB).
@@ -232,6 +265,27 @@ API 키는 OS 키체인(macOS 키체인, Windows 자격 증명 관리자)에 저
 - **앵커를 못 찾을 때**: 카드에 안내를 띄우고 메모 내용은 보관한다.
 - **링크**: `http(s)://`와 `www.` 주소만 링크로 만들고, 앱의 외부 링크 처리기가 기본 브라우저로 연다.
 - 메모는 레이아웃 유지 번역을 켠 상태에서 동작하고, 번역 PDF 저장에는 포함되지 않는다.
+
+## 그래프 (`src/graph/`, `src-tauri/src/graph.rs`)
+
+[graphify](https://github.com/Graphify-Labs/graphify)(0.9.109, Apache-2.0)가 `graph.html`을 만드는 과정을 따랐습니다. graphify는 파이썬 소스로 배포되므로 디컴파일 없이 설치된 소스(`exporters/html.py`, `cluster.py`, `build.py`, `analyze.py`)를 읽고, 같은 그래프에 대해 결과를 비교했습니다.
+
+| graphify | Sunlight |
+|---|---|
+| 감지: 파일을 코드·문서·논문·이미지로 나눔 | 라이브러리의 PDF |
+| 의미 추출: LLM이 문서마다 개념 노드와 관계(EXTRACTED/INFERRED/AMBIGUOUS)를 JSON으로 냄. 파일 내용 해시 + 프롬프트로 캐시 | 지금 번역 엔진이 논문 앞 3쪽(최대 6,000자)을 읽고 `{title, topics, summary}`를 냄. 문서 id(내용 해시) + 프롬프트 버전으로 캐시(`graph/<id>.json`) |
+| 빌드: networkx 무방향 그래프, id 정규화로 중복 노드 합침 | 논문 노드 + 주제 노드. 주제는 소문자·구두점 제거·복수형 정리로 합침(`topicKey`). 관계는 `covers`(논문→주제), `cites`(참고문헌에 다른 논문 제목이 그대로 있으면, 4단어 이상만) |
+| 군집: Leiden(graspologic), 없으면 networkx Louvain(seed 42, threshold 1e-4, max_level 10). 고립 노드는 단독 묶음, 전체의 25%(최소 10)를 넘는 묶음은 다시 나누고, 50개 이상이면서 응집도 0.05 미만인 묶음도 다시 나눔. 크기 내림차순으로 번호 | networkx Louvain을 JS로 옮김(`louvain`, 같은 규칙). 같은 그래프 3개(karate, planted partition 120노드, 이 저장소 672노드)에서 networkx와 묶음 수가 같고 modularity가 같거나 약간 높음 |
+| 이름: 에이전트/LLM이 붙이거나, 없으면 차수가 가장 큰 허브 노드 이름 | 허브 이름. 단, 주제 노드 중에서 고르고 차수가 같으면 모델이 먼저 적은 주제(넓은 분야) |
+| 그리기: vis-network 9.1.6, forceAtlas2Based(중력 −60, 중심 0.005, 스프링 120·0.08, 감쇠 0.4, 겹침 회피 0.8), 200회 안정화 후 물리 끔, 황금각 나선 초기 위치, 크기 10+30×차수/최대차수, 최대 차수의 15% 이상만 이름 표시, 색 10개 팔레트 | 같은 버전·같은 옵션(npm 번들, 그래프 탭에서만 불러옴). 논문은 네모로 항상 이름 표시, 인용선은 파란 화살표 |
+| 사이드바: 검색, 노드 정보·이웃, 묶음 체크박스, 통계(innerHTML) | 같은 구성을 React로. 라벨은 텍스트로만 넣음 |
+
+논문을 하나씩 따로 읽으면 같은 분야가 매번 다르게 적혀(“robotics”, “robot learning”, “robot control”) 논문이 서로 이어지지 않습니다. 실측에서 4편이 모두 따로 떨어졌습니다. 그래서 이미 쓰인 주제 목록(많이 쓰인 순, 최대 200개)을 요청에 함께 보내고 그 표현을 다시 쓰게 합니다. 이후 같은 4편이 “robot learning”, “sim-to-real transfer” 등으로 이어졌습니다.
+
+- **응답 유지**: 분석 요청은 15초마다 빈 줄을 보내 WebKit의 60초 제한을 넘기고, 마지막 줄에 `{ok, paper}` 또는 `{ok:false, error}`를 보냅니다. 페이지가 요청을 끊으면(중지, 화면 이동) 엔진 요청도 끊깁니다.
+- **실패**: 논문마다 오류를 모아 알리고, 두 편 연속 실패하면 엔진 문제로 보고 멈춥니다(키 없음, Ollama 꺼짐).
+- **백그라운드**: macOS WebKit은 가려지거나 최소화된 창의 페이지를 멈춥니다. 창 옵션 `backgroundThrottling: disabled`로 다른 앱을 보는 동안에도 분석과 번역이 계속됩니다(macOS 14 이상).
+- graphify의 하이퍼엣지(3개 이상 노드를 묶는 음영 영역)와 군집 이름용 LLM 호출, 퍼지 중복 제거는 넣지 않았습니다.
 
 ## 원본(Moonlight) 동작 방식 (관찰한 근거)
 
